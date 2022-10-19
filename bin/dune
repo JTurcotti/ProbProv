@@ -1,0 +1,9 @@
+(executable
+ (public_name probprovtypes)
+ (name main)
+ (libraries probprovtypes))
+
+(ocamllex lexer)
+(menhir (modules parser))
+
+
