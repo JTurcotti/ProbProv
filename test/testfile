@@ -1,0 +1,11 @@
+def foo(x) -> (y) {
+  bar(x)
+}
+
+def bar(y) -> (z) {
+  skip
+}
+
+def g(x) -> () {
+    if x + 0 then { 1 } else { 2 }
+}
