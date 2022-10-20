@@ -1,13 +1,14 @@
 type func = Func of string
+let func_to_string (Func s) = s
 
 type local = Local of string
+let local_to_string (Local s) = s
 
 type arg = Arg of int * string
 type ret = Ret of int * string
 
 type branch = Branch of int
 type label = Label of int
-
 
 type aexp =
   | Var of local * label
@@ -54,7 +55,7 @@ let label_prog raw_prog =
           | [] -> false
           | f' :: t' -> f'.raw_name = f || is_in_list t' in
         is_in_list flist
-      in
+     in
       let branch_counter = ref 0 in
       let label_counter = ref 0 in
       let next_branch _ =
@@ -102,12 +103,75 @@ let label_prog raw_prog =
         body = label_expr raw_fdecl.raw_body;
       }
     in
-      List.fold_left (fun prog fdecl ->
-          FuncMap.add (Func(fdecl.raw_name)) (label_fdecl fdecl) prog
-        ) FuncMap.empty flist
+    Program (List.fold_left (fun prog fdecl ->
+        FuncMap.add (Func(fdecl.raw_name)) (label_fdecl fdecl) prog
+      ) FuncMap.empty flist)
   )
+
+
+exception WrongLenPassed
+  
+let int_to_digit_repr dig_reprs i =
+  if List.length dig_reprs != 10 then
+    raise WrongLenPassed else
+    let repr i =
+      List.nth dig_reprs i in
+    if i = 0 then repr 0 else
+      let rec step i = if i = 0 then "" else
+          step (i / 10) ^ repr (i mod 10) in
+      step i
+let int_superscript_repr =
+  int_to_digit_repr ["⁰"; "¹"; "²"; "³"; "⁴"; "⁵"; "⁶"; "⁷"; "⁷"; "⁹"]
+
+let branch_to_string (Branch i) =
+  "ᵖ" ^ (int_superscript_repr i)
+
+let label_to_string (Label i) =
+  int_superscript_repr i
         
-let program_string p =
-  (if validate p then "valid " else "invalid ")
-
-
+let program_string (p : program) =
+  match p with
+  | Program fdecl_map ->
+    let rec aexp_repr aexp =
+      match aexp with
+      | Var (v, l) ->
+        (Printf.sprintf "%s%s" (local_to_string v) (label_to_string l))
+      | Const l ->
+        (Printf.sprintf "0%s" (label_to_string l))
+      | Binop (a1, a2, l) ->
+        (Printf.sprintf "%s ⊕%s %s"
+          (aexp_repr a1) (label_to_string l) (aexp_repr a2))
+      | Unop (a, l) ->
+        (Printf.sprintf "⊖%s%s"
+          (label_to_string l) (aexp_repr a))
+      | FApp (f, a, l) ->
+        (Printf.sprintf "%s%s(%s)"
+          (func_to_string f) (label_to_string l) (aexp_repr a))
+    in
+    let rec expr_repr expr =
+      match expr with
+      | Skip -> "skip"
+      | Cond (a, e_t, e_f, b) ->
+        Printf.sprintf "if%s [%s] then {\n%s\n} else {\n%s\n}"
+          (branch_to_string b) (aexp_repr a)
+          (expr_repr e_t) (expr_repr e_f)
+      | Assign (v, a) ->
+        Printf.sprintf "%s = %s" (local_to_string v) (aexp_repr a)
+      | Seq (e1, e2) ->
+        Printf.sprintf "%s\n%s"
+          (expr_repr e1) (expr_repr e2)
+      | Assert (v, a) ->
+        Printf.sprintf "assert %s by %s"
+          (local_to_string v) (aexp_repr a)
+      | AExp a -> aexp_repr a
+    in
+    let fdecl_repr fdecl =
+      Printf.sprintf "def %s:\n%s"
+        (func_to_string fdecl.name)
+        (expr_repr fdecl.body)
+    in
+    let acc_fdecl _ fdecl prior_repr =
+      (if prior_repr = "" then "" else prior_repr ^ "\n\n") ^ (fdecl_repr fdecl) in
+    FuncMap.fold acc_fdecl fdecl_map ""
+  
+  

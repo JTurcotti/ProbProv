@@ -1,6 +1,3 @@
-let () = print_endline "Hello, World!"
-
-
 module IO =
 struct
   let usage_msg = "eval -i <input_file> -o <output_file>"
@@ -26,12 +23,12 @@ let program = IO.(try
                  (*let oc = open_out !output_file in*)
                  let lexbuf = Lexing.from_channel ic in
                  let program = Parser.main Lexer.token lexbuf in
-                 program
+                 Expr.label_prog program
                with Lexer.FAIL ->
                  exit 1)
 
 
-let _ = print_endline (Raw_expr.program_string program)
+let _ = print_endline (Expr.program_string program)
 
     
 

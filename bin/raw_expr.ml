@@ -1,3 +1,9 @@
+(* a raw_program is the result of parsing a source file
+   it is missing certain key information like labels for lines and branches
+   but contains the AST and all identifiers, function names, etc
+*)
+
+(* real IMP would have aexp and bexp, we don't care about the difference here *)
 type raw_aexp =
   | Raw_Var of string
   | Raw_Const
@@ -49,8 +55,6 @@ type raw_program = Raw_Program of raw_fdecl list
       | Assert (_, a) -> validate_aexp a
       | AExp a -> validate_aexp a in
     List.fold_left (fun b fdecl -> b && validate_expr fdecl.body) true flist*)
-                    
-
         
 let program_string _ =
   "apple"
