@@ -27,7 +27,7 @@ idents: {[]}
 
 expr:
   | SKIP {Raw_Skip}
-  | IF aexp THEN LBRACE expr RBRACE ELSE LBRACE expr RBRACE {Raw_Cond($2, $5, $9)}
+  | IF aexp LBRACE expr RBRACE ELSE LBRACE expr RBRACE {Raw_Cond($2, $4, $8)}
   | IDENT EQ aexp {Raw_Assign($1, $3)}
   | expr SEMI expr {Raw_Seq($1, $3)}
   | ASSERT IDENT BY aexp {Raw_Assert($2, $4)}

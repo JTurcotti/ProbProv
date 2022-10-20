@@ -16,7 +16,6 @@ rule token = parse
      |  '=' {EQ}
      |	"->" {TO}
      |  "if"	{IF}
-     |  "then"	{THEN}
      |	"else"	{ELSE}
      |  ';' {SEMI}
      |	"skip" {SKIP}

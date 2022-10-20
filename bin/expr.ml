@@ -36,8 +36,7 @@ type fdecl = {
 
 module FuncKey = struct
   type t = func
-  let compare f1 f2 =
-    match (f1, f2) with | (Func name1, Func name2) -> String.compare name1 name2
+  let compare = Stdlib.compare
 end
 
 module FuncMap = Map.Make(FuncKey)
@@ -45,6 +44,14 @@ type program = Program of fdecl FuncMap.t
 
 exception LabelErr of string
 
+(* This function takes a raw_program (see raw_expr)
+   as parsed from source, and adds associates all of its
+   conditionals with branches numbers and some AST nodes
+   with label numbers
+
+   TODO: add source locations to raw_expr's, and create a map
+   from label numbers to source positions as part of this function
+*)
 let label_prog raw_prog =
   Raw_expr.(
     match raw_prog with
@@ -139,10 +146,10 @@ let program_string (p : program) =
       | Const l ->
         (Printf.sprintf "0%s" (label_to_string l))
       | Binop (a1, a2, l) ->
-        (Printf.sprintf "%s ⊕%s %s"
+        (Printf.sprintf "(%s ⊕%s %s)"
           (aexp_repr a1) (label_to_string l) (aexp_repr a2))
       | Unop (a, l) ->
-        (Printf.sprintf "⊖%s%s"
+        (Printf.sprintf "(⊖%s%s)"
           (label_to_string l) (aexp_repr a))
       | FApp (f, a, l) ->
         (Printf.sprintf "%s%s(%s)"
