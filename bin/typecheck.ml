@@ -1,4 +1,4 @@
-open Types
+open Context
 open Expr
 
 let double_option_bind opt1 opt2 f =
@@ -25,8 +25,8 @@ let rec typecheck_aexp aexp ctxt : blame option =
   | Unop (a, l) ->
     Option.bind (typecheck_aexp a ctxt) (fun b ->
         Some (blame_merge b (blame_one (LabelSite l))))
-  | FApp (f, a, l) ->
-    Option.bind (typecheck_aexp a ctxt) (fun b ->
+  | FApp (_, a, _) ->
+    Option.bind (typecheck_aexp a ctxt) (fun _ -> None)
         
 
 
