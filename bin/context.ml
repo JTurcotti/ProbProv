@@ -276,6 +276,20 @@ let context_assign x b c =
   else 
     LocalMap.add x b c
 
+let context_blames_phantom_ret c =
+  LocalMap.fold (fun _ b blames ->
+      blames || (blames_phantom_ret b)) c false
+
+let filter_phantom_ret c =
+  if (context_blames_phantom_ret c) then None else Some c
+
+let filter_to_ret_sites fdecl =
+  let is_ret_local (Local(x)) =
+    List.fold_right
+      (fun (Ret(_, ret)) x_is_ret -> x_is_ret || x = ret) fdecl.results false
+  in
+  LocalMap.filter (fun x _ -> is_ret_local x)
+
 let context_assign_zero x c =
   context_assign x blame_zero c
 

@@ -181,8 +181,33 @@ let rec typecheck_expr prog expr ctxt: context option =
   | Assert (v, _) ->
     (* assertions render a value correct - i.e. blame-free *)
     Some (context_assign_zero v ctxt)
-  | AExp _ -> Some ctxt
+  | AExp _ ->
     (* noop *)
+    Some ctxt
+
+let fdecl_starting_ctxt fdecl : context =
+  let fdecl_starting_arg =
+  List.fold_right
+    (fun (Arg(i, s)) -> 
+       context_assign (Local(s)) (blame_one (ArgSite(Arg(i, s)))))
+    fdecl.params in
+  let fdecl_starting_ret =
+  List.fold_right
+    (fun (Ret(i, s)) ->
+       context_assign (Local(s)) (blame_one (PhantomRetSite(Ret(i, s)))))
+    fdecl.results in
+  context_empty |> fdecl_starting_arg |> fdecl_starting_ret
+
+let typecheck_fdecl prog fdecl : context option =
+  Option.bind
+    (typecheck_expr prog fdecl.body (fdecl_starting_ctxt fdecl))
+    (fun ctxt -> ctxt
+                 |> (filter_to_ret_sites fdecl) |> filter_phantom_ret)
     
-let typecheck_program _ : context option = None
+let typecheck_program (Program fdecls) : context =
+  FuncMap.fold (fun _ fdecl ctxt ->
+      match (typecheck_fdecl (Program fdecls) fdecl) with
+      | Some fdecl_ctxt -> context_merge ctxt fdecl_ctxt
+      | None -> ctxt) fdecls context_empty
+      
       
