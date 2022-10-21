@@ -1,6 +1,6 @@
 open Expr
 
-let double_option_bind combine opt1 opt2 =
+let double_option_map combine opt1 opt2 =
   match (opt1, opt2) with
   | None, None -> None
   | Some v, None -> Some v
@@ -106,7 +106,7 @@ let event_one : event =
 (* combines two events - result occurs if either of the sources do *)
 let event_disj : event -> event -> event =
   let merge_func _ =
-    double_option_bind external_event_disj
+    double_option_map external_event_disj
   in
   IEMap.merge merge_func
     
@@ -141,7 +141,7 @@ let event_conj e1 e2 : event =
    or applying event_disj if two non-empties are passed
    meant to be used in Map.Make().Merge *)
 let merge_event_ops _ =
-  double_option_bind event_disj
+  double_option_map event_disj
     
 (* performs a merge of event options, first applying
    internal event conjunctions in accordance with the passed branch
@@ -158,7 +158,7 @@ let merge_event_ops_across_branch br _ op_e1 op_e2 =
         (* if we didn't handle this case separately,
            we'd still have a correct result, but a
            needlessly large and expanded one. This is why we don't
-           use double_option_bind*)
+           use double_option_map*)
         Some e1
       else
         Some (event_disj
@@ -253,7 +253,7 @@ let context_empty : context = LocalMap.empty
 
 (* looks up the blame of variable x in context c if present
    and ensures it doesn't blame a phantom return *)
-let context_lookup x c =
+let context_lookup x c : blame option =
   match LocalMap.find_opt x c with
   | None -> None
   | Some b -> if blames_phantom_ret b then
@@ -264,7 +264,7 @@ exception PhantomRetAssignedIntoLocal of local
 
 (* returns a new context with local var x bound to blame b
    in c, ensures b doesn't blame a phantom return *)
-let context_bind x b c =
+let context_assign x b c =
   if blames_phantom_ret b then
     raise (PhantomRetAssignedIntoLocal x)
   else 
@@ -272,12 +272,12 @@ let context_bind x b c =
 
 let context_merge : context -> context -> context =
   let merge_func _ =
-    double_option_bind blame_merge in
+    double_option_map blame_merge in
   LocalMap.merge merge_func
 
 let context_merge_across_branches br : context -> context -> context =
   let merge_func _ =
-    double_option_bind (blame_merge_across_branch br) in
+    double_option_map (blame_merge_across_branch br) in
   LocalMap.merge merge_func
 
 (* end context utilities *)
@@ -309,7 +309,7 @@ let rec compute_touch_set (e : expr) =
 *)
 let assoc_touch_set_with_blame ts b : context =
   let acc x e =
-    context_bind x (blame_event_conj b e) 
+    context_assign x (blame_event_conj b e) 
   in
   LocalMap.fold acc ts context_empty
 
@@ -326,3 +326,5 @@ let context_merge_cond br b_br e_t e_f c_t c_f : context =
     (context_merge c_f
        (assoc_touch_set_with_blame (compute_touch_set e_f) b_br))
 
+
+let ctxt_to_string _ = "ctxt"

@@ -29,6 +29,7 @@ let program = IO.(try
 
 
 let _ = print_endline (Expr.program_string program)
+let _ = print_endline (Types.ctxt_to_string (Typecheck.typecheck_program program))
 
     
 
