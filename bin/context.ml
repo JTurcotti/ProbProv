@@ -9,8 +9,8 @@ let double_option_map combine opt1 opt2 =
     
 type atomic_external_event =
   (* refers to the event of a function's return depending on its arg -
-     int must be a distinct value for each call*)
-    CallRetEvent of func * arg * ret * int
+     `call` identifies both a function at the specific callsite *)
+    CallEvent of call * arg * ret
 
 module AEEOrdered = struct
   type t = atomic_external_event
@@ -171,9 +171,8 @@ type site =
   (* these sites represent source positions of AST nodes *)
   | LabelSite of label
   (* these sites represent a stand-in for the blame created
-     by calling a function - int must be a distinct value
-     for each call *)
-  | CallRetSite of func * ret * int
+     by calling a function at the site `call` *)
+  | CallSite of call * ret
   (* these sites represent the arguments passed to our function *)
   | ArgSite of arg
   (* these sites represent the return variables; "initial values" -
@@ -227,6 +226,13 @@ let blames_phantom_ret b =
   in
   SiteMap.fold check b false
 
+
+(* for every site blamed, conjuct its event with the passed
+   atomic external event `aee` - yielding a new new blame
+   conditioned on that event. This is used only for function calls *)
+let blame_external_conj aee : blame -> blame =
+  SiteMap.map (event_external_conj aee)
+
 (* conjucts the event `e` into the event associated with
    every site of `b`.
    Precondition: e contains no external events
@@ -269,6 +275,9 @@ let context_assign x b c =
     raise (PhantomRetAssignedIntoLocal x)
   else 
     LocalMap.add x b c
+
+let context_assign_zero x c =
+  context_assign x blame_zero c
 
 let context_merge : context -> context -> context =
   let merge_func _ =

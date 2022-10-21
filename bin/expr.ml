@@ -9,13 +9,14 @@ type ret = Ret of int * string
 
 type branch = Branch of int
 type label = Label of int
+type call = Call of func * int
 
 type aexp =
   | Var of local * label
   | Const of label
   | Binop of aexp * aexp * label
   | Unop of aexp * label
-  | FApp of func * (aexp list) * label
+  | FApp of func * (aexp list) * label * call
 
 type expr =
   | Skip
@@ -43,6 +44,9 @@ end
 module FuncMap = Map.Make(FuncKey)
 type program = Program of fdecl FuncMap.t
 
+let lookup_func_opt f (Program mp) : fdecl option =
+  FuncMap.find_opt f mp
+
 exception LabelErr of string
 
 (* This function takes a raw_program (see raw_expr)
@@ -63,15 +67,26 @@ let label_prog raw_prog =
           | [] -> false
           | f' :: t' -> f'.raw_name = f || is_in_list t' in
         is_in_list flist
-     in
+      in
+      (* we use this to ensure each branch gets a distinct index *)
       let branch_counter = ref 0 in
+      (* we use this to ensure each line gets a distinct label *)
       let label_counter = ref 0 in
+      (* we use this to ensure each call to the same function
+         gets a distinct index *)
+      let call_counter = ref FuncMap.empty in
       let next_branch _ =
-      let () = branch_counter := !branch_counter + 1 in
-      Branch(!branch_counter - 1) in
-    let next_label _ =
-      let () = label_counter := !label_counter + 1 in
-      Label(!label_counter - 1) in
+        let () = branch_counter := !branch_counter + 1 in
+        Branch(!branch_counter - 1) in
+      let next_label _ =
+        let () = label_counter := !label_counter + 1 in
+        Label(!label_counter - 1) in
+      let next_call f =
+        let i = match FuncMap.find_opt f !call_counter with
+          | None -> 0
+          | Some i -> i in
+        let () = call_counter := (FuncMap.add f (i + 1) !call_counter) in
+        Call(f, i) in
     let rec label_aexp raw_aexpr =
       match raw_aexpr with
       | Raw_Var s -> Var(Local(s), next_label())
@@ -82,7 +97,9 @@ let label_prog raw_prog =
       | Raw_FApp (s, a_list) ->
         let () = if not (is_func_name s) then
             raise (LabelErr (s ^ " not a function name")) else () in
-        FApp(Func(s), List.map label_aexp a_list, next_label())
+        let f = Func(s) in
+        FApp(f, List.map label_aexp a_list,
+             next_label(), next_call f)
     in
     let rec label_expr raw_expr =
       (match raw_expr with
@@ -132,13 +149,19 @@ let int_to_digit_repr dig_reprs i =
       step i
 let int_superscript_repr =
   int_to_digit_repr ["⁰"; "¹"; "²"; "³"; "⁴"; "⁵"; "⁶"; "⁷"; "⁷"; "⁹"]
+let int_subscript_repr =
+  int_to_digit_repr ["₀"; "₁"; "₂"; "₃"; "₄"; "₅"; "₆"; "₇"; "₈"; "₉"]
+    
 
 let branch_to_string (Branch i) =
-  "ᵖ" ^ (int_superscript_repr i)
+  Printf.sprintf "ᴮ%s" (int_superscript_repr i)
+
+let call_to_string (Call (_, i)) =
+  Printf.sprintf "%s" (int_subscript_repr i)
 
 let label_to_string (Label i) =
-  int_superscript_repr i
-
+  Printf.sprintf "ᴸ%s" (int_superscript_repr i)
+      
 let list_to_string to_str =
   function
   | [] -> ""
@@ -161,9 +184,9 @@ let program_string (p : program) =
       | Unop (a, l) ->
         (Printf.sprintf "(⊖%s%s)"
           (label_to_string l) (aexp_repr a))
-      | FApp (f, a_list, l) ->
-        (Printf.sprintf "%s%s(%s)"
-           (func_to_string f) (label_to_string l)
+      | FApp (f, a_list, l, c) ->
+        (Printf.sprintf "%s%s%s(%s)"
+           (func_to_string f) (call_to_string c) (label_to_string l)
            (list_to_string aexp_repr a_list))
     in
     let rec expr_repr expr =
