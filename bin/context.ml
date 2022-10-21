@@ -99,6 +99,9 @@ type event = external_event IEMap.t
 
 (* event utilities *)
 
+let event_zero : event =
+  IEMap.empty
+
 (* the event that "always occurs" *)
 let event_one : event =
   IEMap.singleton internal_event_one external_event_one
@@ -121,7 +124,7 @@ let event_external_conj aee : event -> event =
 let event_internal_conj aie e : event =
   let build_new_event ie =
     (IEMap.add (internal_event_conj aie ie)) in
-  IEMap.fold build_new_event e event_one
+  IEMap.fold build_new_event e event_zero
 
 (* returns the conjunction of two events
       Precondition: e2 contains no external events *)
@@ -344,4 +347,3 @@ let context_merge_cond br b_br e_t e_f c_t c_f : context =
        (assoc_touch_set_with_blame (compute_touch_set e_f) b_br))
 
 
-let ctxt_to_string _ = "ctxt"
