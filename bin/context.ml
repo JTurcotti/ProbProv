@@ -266,15 +266,9 @@ let context_lookup x c : blame option =
       raise (PhantomRetLookedUpByLocal x) else
       Some b
 
-exception PhantomRetAssignedIntoLocal of local
-
 (* returns a new context with local var x bound to blame b
-   in c, ensures b doesn't blame a phantom return *)
-let context_assign x b c =
-  if blames_phantom_ret b then
-    raise (PhantomRetAssignedIntoLocal x)
-  else 
-    LocalMap.add x b c
+   in c *)
+let context_assign : local -> blame -> context -> context = LocalMap.add
 
 let context_blames_phantom_ret c =
   LocalMap.fold (fun _ b blames ->
