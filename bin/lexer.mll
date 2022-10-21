@@ -11,6 +11,7 @@ rule token = parse
      |	')' {RPAREN}
      |	'{' {LBRACE}
      |	'}' {RBRACE}
+     |	',' {COMMA}
      |  ['+''-''*''/'] | "==" | "!=" | "||" | "&&" {BINOP}
      |	'!' {UNOP}
      |  '=' {EQ}

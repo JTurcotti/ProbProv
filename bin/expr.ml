@@ -15,12 +15,13 @@ type aexp =
   | Const of label
   | Binop of aexp * aexp * label
   | Unop of aexp * label
-  | FApp of func * aexp * label
+  | FApp of func * (aexp list) * label
 
 type expr =
   | Skip
   | Cond of aexp * expr * expr * branch
   | Assign of local * aexp
+  | FAssign of (local list) * aexp
   | Seq of expr * expr
   | Assert of local * aexp
   | AExp of aexp
@@ -78,10 +79,10 @@ let label_prog raw_prog =
       | Raw_Binop (a, a') ->
         Binop(label_aexp a, label_aexp a', next_label())
       | Raw_Unop a -> Unop(label_aexp a, next_label())
-      | Raw_FApp (s, a) ->
+      | Raw_FApp (s, a_list) ->
         let () = if not (is_func_name s) then
             raise (LabelErr (s ^ " not a function name")) else () in
-        FApp(Func(s), label_aexp a, next_label())
+        FApp(Func(s), List.map label_aexp a_list, next_label())
     in
     let rec label_expr raw_expr =
       (match raw_expr with
@@ -91,6 +92,8 @@ let label_prog raw_prog =
               next_branch())
        | Raw_Assign (s, a) ->
          Assign(Local(s), label_aexp a)
+       | Raw_FAssign (s_list, a) ->
+         FAssign(List.map (fun s -> Local(s)) s_list, label_aexp a)
        | Raw_Seq (e, e') ->
          Seq(label_expr e, label_expr e')
        | Raw_Assert (s, a) ->
@@ -135,6 +138,13 @@ let branch_to_string (Branch i) =
 
 let label_to_string (Label i) =
   int_superscript_repr i
+
+let list_to_string to_str =
+  function
+  | [] -> ""
+  | x :: l ->
+    List.fold_left (fun s y -> s ^ ", " ^ to_str y) (to_str x) l
+  
         
 let program_string (p : program) =
   match p with
@@ -151,9 +161,10 @@ let program_string (p : program) =
       | Unop (a, l) ->
         (Printf.sprintf "(⊖%s%s)"
           (label_to_string l) (aexp_repr a))
-      | FApp (f, a, l) ->
+      | FApp (f, a_list, l) ->
         (Printf.sprintf "%s%s(%s)"
-          (func_to_string f) (label_to_string l) (aexp_repr a))
+           (func_to_string f) (label_to_string l)
+           (list_to_string aexp_repr a_list))
     in
     let rec expr_repr expr =
       match expr with
@@ -164,6 +175,9 @@ let program_string (p : program) =
           (expr_repr e_t) (expr_repr e_f)
       | Assign (v, a) ->
         Printf.sprintf "%s = %s" (local_to_string v) (aexp_repr a)
+      | FAssign (v_list, a) ->
+        Printf.sprintf "%s = %s"
+          (list_to_string local_to_string v_list) (aexp_repr a)
       | Seq (e1, e2) ->
         Printf.sprintf "%s\n%s"
           (expr_repr e1) (expr_repr e2)

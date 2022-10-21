@@ -9,12 +9,13 @@ type raw_aexp =
   | Raw_Const
   | Raw_Binop of raw_aexp * raw_aexp
   | Raw_Unop of raw_aexp
-  | Raw_FApp of string * raw_aexp
+  | Raw_FApp of string * (raw_aexp list)
 
 type raw_expr =
   | Raw_Skip
   | Raw_Cond of raw_aexp * raw_expr * raw_expr
   | Raw_Assign of string * raw_aexp
+  | Raw_FAssign of (string list) * raw_aexp
   | Raw_Seq of raw_expr * raw_expr
   | Raw_Assert of string * raw_aexp
   | Raw_AExp of raw_aexp

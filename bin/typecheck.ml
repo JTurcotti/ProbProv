@@ -25,8 +25,8 @@ let rec typecheck_aexp aexp ctxt : blame option =
   | Unop (a, l) ->
     Option.bind (typecheck_aexp a ctxt) (fun b ->
         Some (blame_merge b (blame_one (LabelSite l))))
-  | FApp (_, a, _) ->
-    Option.bind (typecheck_aexp a ctxt) (fun _ -> None)
+  | FApp (_, _, _) -> None
+(*Option.bind (typecheck_aexp a ctxt) (fun _ -> None)*)
         
 
 

@@ -2,8 +2,17 @@ def foo(x) -> (y) {
   bar(x)
 }
 
-def bar(y) -> (z) {
-  skip
+def bar(a, b, c) -> (u) {
+  x = bar(a + 1, b + 1, c + 1);
+  y, z, w = gab();
+  v = bar(gab());
+  u = x + y + z + w + v
+}
+
+def gab() -> (a, b, c) {
+    a = 1;
+    b = 2;
+    c = 3
 }
 
 def fib(x) -> (ret) {
