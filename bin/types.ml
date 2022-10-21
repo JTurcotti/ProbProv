@@ -104,7 +104,7 @@ let event_one : event =
   IEMap.singleton internal_event_one external_event_one
 
 (* combines two events - result occurs if either of the sources do *)
-let event_disj =
+let event_disj : event -> event -> event =
   let merge_func _ =
     double_option_bind external_event_disj
   in
@@ -112,25 +112,29 @@ let event_disj =
     
 (* conjuncts an event with a new atomic external event -
    result occurs if original occurs and atomic external event occurs *)
-let event_external_conj aee =
+let event_external_conj aee : event -> event =
   IEMap.map (external_event_conj aee)
 
 (* conjuncts an event with a new atomic internal event -
    result occurs if any case of the original occurs followed
    by the passed internal event *)
-let event_internal_conj aie e =
+let event_internal_conj aie e : event =
   let build_new_event ie =
     (IEMap.add (internal_event_conj aie ie)) in
   IEMap.fold build_new_event e event_one
 
 (* returns the conjunction of two events
       Precondition: e2 contains no external events *)
-let event_conj e1 e2 : event = event_one
-(*  let acc_func ie ee prev_e =
+let event_conj e1 e2 : event =
+  let e1_with_ie ie =
+    let acc_func br dir : event -> event = 
+      event_internal_conj (AIE(br, dir)) in
+    BranchMap.fold acc_func ie e1 in
+  let acc_func ie ee : event -> event =
     if ee != external_event_one then exit(1) else
-      event_internal_conj 
+      event_disj (e1_with_ie ie)
   in
-  IEMap.fold acc_func e2 e1*)
+  IEMap.fold acc_func e2 IEMap.empty
   
   
 (* performs a merge of event options, doing either the trivial thing
@@ -308,4 +312,17 @@ let assoc_touch_set_with_blame ts b : context =
     context_bind x (blame_event_conj b e) 
   in
   LocalMap.fold acc ts context_empty
+
+(* this context merge fully captures the semantics of conditionals:
+   each branch's context (`c_t`, `c_f`) is first conjuncted with
+   the touch set for that branch's expression (`e_t`, `e_f`),
+   associated with the blame for the branching guard (`b_br`), and
+   then the two results are merge across the branch `br`
+*) 
+let context_merge_cond br b_br e_t e_f c_t c_f : context =
+  context_merge_across_branches br
+    (context_merge c_t
+       (assoc_touch_set_with_blame (compute_touch_set e_t) b_br))
+    (context_merge c_f
+       (assoc_touch_set_with_blame (compute_touch_set e_f) b_br))
 
