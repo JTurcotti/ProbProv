@@ -203,11 +203,9 @@ let typecheck_fdecl prog fdecl : context option =
     (typecheck_expr prog fdecl.body (fdecl_starting_ctxt fdecl))
     (fun ctxt -> ctxt
                  |> (filter_to_ret_sites fdecl) |> filter_phantom_ret)
-    
-let typecheck_program (Program fdecls) : context =
-  FuncMap.fold (fun _ fdecl ctxt ->
-      match (typecheck_fdecl (Program fdecls) fdecl) with
-      | Some fdecl_ctxt -> context_merge ctxt fdecl_ctxt
-      | None -> ctxt) fdecls context_empty
-      
-      
+
+type typechecked_program = TProgram of (fdecl * context option) FuncMap.t
+
+let typecheck_program (Program fdecls) : typechecked_program =
+  TProgram (FuncMap.map (fun fdecl ->
+      (fdecl, typecheck_fdecl (Program fdecls) fdecl)) fdecls)

@@ -49,7 +49,7 @@ let map_repr
 let event_repr =
   map_repr
     IEMap.is_empty IEMap.choose IEMap.remove IEMap.fold
-    "0" internal_event_repr external_event_repr "%s*%s" "%s ∨ %s" 
+    "0" internal_event_repr external_event_repr "%s*[%s]" "%s ∨ %s" 
 
 let site_repr = function
   | LabelSite(Label(i)) -> 
@@ -73,7 +73,22 @@ let context_repr =
   map_repr
     LocalMap.is_empty LocalMap.choose LocalMap.remove LocalMap.fold
     "∅" local_repr blame_repr "%s ↦ {\n%s}" "%s\n%s"
+
+let func_repr (Func s) = s
   
-  let blame_ex = blame_repr (blame_event_conj (blame_one (LabelSite(Label(10)))) (event_disj
-                                                                                    (event_internal_conj (AIE(Branch(5), false)) event_one)
-                                                                                    (event_internal_conj (AIE(Branch(6), true)) event_one)))
+let typechecked_program_repr (Typecheck.TProgram map) =
+  let result_repr (_, c_opt) =
+    match c_opt with
+      | None -> "FAIL"
+      | Some c -> "\n" ^ context_repr c in
+  map_repr
+    FuncMap.is_empty FuncMap.choose FuncMap.remove FuncMap.fold
+    "" func_repr result_repr "function %s: %s" "%s\n\n%s"
+    map
+    
+
+(* for testing use: *)
+let blame_ex = blame_repr (blame_event_conj (blame_one (LabelSite(Label(10)))) (event_disj
+                                                                                  (event_internal_conj (AIE(Branch(5), false)) event_one)
+                                                                                  (event_internal_conj (AIE(Branch(6), true)) event_one)))
+    

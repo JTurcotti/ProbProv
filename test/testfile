@@ -1,5 +1,5 @@
 def foo(x) -> (y) {
-  bar(x)
+  y = bar(x, x, x)
 }
 
 def bar(a, b, c) -> (u) {
