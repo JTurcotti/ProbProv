@@ -208,4 +208,6 @@ type typechecked_program = TProgram of (fdecl * context option) FuncMap.t
 
 let typecheck_program (Program fdecls) : typechecked_program =
   TProgram (FuncMap.map (fun fdecl ->
-      (fdecl, typecheck_fdecl (Program fdecls) fdecl)) fdecls)
+      (fdecl,
+       Option.map Context_reduce.context_reduce 
+         (typecheck_fdecl (Program fdecls) fdecl))) fdecls)

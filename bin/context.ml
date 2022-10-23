@@ -6,7 +6,7 @@ let double_option_map combine opt1 opt2 =
   | Some v, None -> Some v
   | None, Some v -> Some v
   | Some v1, Some v2 -> Some (combine v1 v2)
-    
+
 type atomic_external_event =
   (* refers to the event of a function's return depending on its arg -
      `call` identifies both a function at the specific callsite *)
@@ -40,7 +40,7 @@ type external_event = AEEDNFSet.t
 (* the external event that always occurs *)
 let external_event_one : external_event =
   AEEDNFSet.singleton aee_one
-    
+
 (* conjunct a new atomic external event onto this external event *)
 let external_event_conj aee ee : external_event =
   AEEDNFSet.map (aee_conj aee) ee
@@ -58,7 +58,7 @@ module BranchMap = Map.Make(BranchOrdered)
 
 (* an atomic_internal_event is a preference about how a branch is taken *)
 type atomic_internal_event = AIE of branch * bool
-                                    
+
 (* an internal event is statement about branches being taken.
    Not present means "don't care"
    mapped to true means must be taken true
@@ -112,7 +112,7 @@ let event_disj : event -> event -> event =
     double_option_map external_event_disj
   in
   IEMap.merge merge_func
-    
+
 (* conjuncts an event with a new atomic external event -
    result occurs if original occurs and atomic external event occurs *)
 let event_external_conj aee : event -> event =
@@ -138,35 +138,35 @@ let event_conj e1 e2 : event =
       event_disj (e1_with_ie ie)
   in
   IEMap.fold acc_func e2 IEMap.empty
-  
-  
+
+
 (* performs a merge of event options, doing either the trivial thing
    or applying event_disj if two non-empties are passed
    meant to be used in Map.Make().Merge *)
 let merge_event_ops _ =
   double_option_map event_disj
-    
+
 (* performs a merge of event options, first applying
    internal event conjunctions in accordance with the passed branch
    meant to be used in Map.Make().Merge *)
 let merge_event_ops_across_branch br _ op_e1 op_e2 =
-    match (op_e1, op_e2) with
-    | None, None -> None
-    | Some e, None ->
-      Some (event_internal_conj (AIE(br, true)) e)
-    | None, Some e ->
-      Some (event_internal_conj (AIE(br, false)) e)
-    | Some e1, Some e2 ->
-      if e1 = e2 then
-        (* if we didn't handle this case separately,
-           we'd still have a correct result, but a
-           needlessly large and expanded one. This is why we don't
-           use double_option_map*)
-        Some e1
-      else
-        Some (event_disj
-                (event_internal_conj (AIE(br, true)) e1)
-                (event_internal_conj (AIE(br, false)) e2))
+  match (op_e1, op_e2) with
+  | None, None -> None
+  | Some e, None ->
+    Some (event_internal_conj (AIE(br, true)) e)
+  | None, Some e ->
+    Some (event_internal_conj (AIE(br, false)) e)
+  | Some e1, Some e2 ->
+    if e1 = e2 then
+      (* if we didn't handle this case separately,
+         we'd still have a correct result, but a
+         needlessly large and expanded one. This is why we don't
+         use double_option_map*)
+      Some e1
+    else
+      Some (event_disj
+              (event_internal_conj (AIE(br, true)) e1)
+              (event_internal_conj (AIE(br, false)) e2))
 
 (* end event utilities *)
 
@@ -187,7 +187,7 @@ let is_phantom_ret s =
   match s with
   | PhantomRetSite _ -> true
   | _ -> false
-    
+
 module SiteKey = struct
   type t = site
   let compare = Stdlib.compare
@@ -242,9 +242,9 @@ let blame_external_conj aee : blame -> blame =
 *)
 let blame_event_conj b e : blame =
   SiteMap.map (event_conj e) b
-    
+
 (* end blame utilities *)
-    
+
 module LocalKey = struct
   type t = local
   let compare = Stdlib.compare
@@ -257,6 +257,51 @@ type context = blame LocalMap.t
 exception PhantomRetLookedUpByLocal of local
 
 (* context utilities *)
+
+module Context_reduce =
+struct
+  (* FOLLOWING FUNCTIONS DEAL WITH CONTEXT REDUCTION *)
+
+  (* This ensures that disjunctions of A and B, where A implies B,
+     are reduced to just A*)
+  let external_event_reduce ext =
+    let not_implied_by_another aee_conj =
+      AEEDNFSet.fold (fun aee_conj2 bool ->
+          bool && not (AEEConjunctiveSet.subset aee_conj2 aee_conj)
+        ) (AEEDNFSet.remove aee_conj ext) true in
+    AEEDNFSet.filter not_implied_by_another ext
+
+  let submap m1 m2 =
+    BranchMap.fold (fun k v bool ->
+        bool && (
+          match BranchMap.find_opt k m2 with
+          | Some v2 -> v2 = v
+          | None -> false)) m1 true
+
+  let event_reduce event =
+    let event2 = IEMap.map external_event_reduce event in
+  (*
+     this code takes care of removing internal event level
+     subsumption, but it doesn't seem to be needed yet
+     (such subsumption never introduced by typechecking)
+     feel free to uncomment if needed
+  let not_implied_by_another int ext =
+    IEMap.fold (fun int2 ext2 bool ->
+        bool && not (submap int2 int
+                     && 
+                     ext2 = ext)
+      ) (IEMap.remove int event2) true in
+  let event3 = IEMap.filter not_implied_by_another event2 in *)
+    event2
+
+  let blame_reduce blame =
+    let blame2 = SiteMap.map event_reduce blame in
+    blame2
+
+  let context_reduce context =
+    let context2 = LocalMap.map blame_reduce context in
+    context2
+end
 
 let context_empty : context = LocalMap.empty
 
@@ -341,9 +386,11 @@ let assoc_touch_set_with_blame ts b : context =
 *) 
 let context_merge_cond br b_br e_t e_f c_t c_f : context =
   context_merge_across_branches br
-    (context_merge c_t
-       (assoc_touch_set_with_blame (compute_touch_set e_t) b_br))
-    (context_merge c_f
-       (assoc_touch_set_with_blame (compute_touch_set e_f) b_br))
+    (Context_reduce.context_reduce
+       (context_merge c_t
+          (assoc_touch_set_with_blame (compute_touch_set e_t) b_br)))
+    (Context_reduce.context_reduce
+       (context_merge c_f
+          (assoc_touch_set_with_blame (compute_touch_set e_f) b_br)))
 
 

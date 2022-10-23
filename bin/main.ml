@@ -28,10 +28,9 @@ let program = IO.(try
                  exit 1)
 
 
-let _ = print_endline (Expr.program_string program)
+let _ = print_endline (Expr_repr.program_string program)
 let _ = print_endline (Context_repr.typechecked_program_repr
                          (Typecheck.typecheck_program program))
-
     
 
 
