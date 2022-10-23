@@ -22,3 +22,21 @@ def fib(x) -> (ret) {
         ret = fib(x - 1) + fib(x - 2)
     }
 }
+
+def baz() -> (x, y) {
+    z1 = 0;
+    z2 = 0;
+    if 0 {
+        x = z1;
+        y = z1
+    } else {
+        x = z2;
+        y = z2
+    }
+}
+
+def baz_use() -> (x1, y1, x2, y2) {
+        x1, y1 = baz();
+        x2, y2 = baz()
+}
+        

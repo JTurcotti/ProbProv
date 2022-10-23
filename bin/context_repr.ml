@@ -70,18 +70,35 @@ let blame_repr =
 
 let local_repr (Local s) = s
 
-let context_repr =
+let context_repr_prim local_repr =
   map_repr
     LocalMap.is_empty LocalMap.choose LocalMap.remove LocalMap.fold
     "∅" local_repr blame_repr "%s ↦ {\n%s}" "%s\n%s"
 
+let context_repr = context_repr_prim local_repr
+
+let context_repr_fdecl_out fdecl =
+  let lookup_local s =
+    List.fold_left (function
+        | Some r -> fun _ -> Some r
+        | None -> fun (Ret(i, s2)) ->
+          if s = s2 then Some (Ret(i, s)) else None)
+      None fdecl.results in
+  let local_repr (Local s) =
+    match lookup_local s with
+    | Some (Ret(i, s)) -> Printf.sprintf "ρ%s⟨%s⟩"
+                            (int_subscript_repr i) s
+    | None -> s
+  in
+  context_repr_prim local_repr  
+
 let func_repr (Func s) = s
   
 let typechecked_program_repr (Typecheck.TProgram map) =
-  let result_repr (_, c_opt) =
+  let result_repr (fdecl, c_opt) =
     match c_opt with
       | None -> "FAIL"
-      | Some c -> "\n" ^ context_repr c in
+      | Some c -> "\n" ^ context_repr_fdecl_out fdecl c in
   map_repr
     FuncMap.is_empty FuncMap.choose FuncMap.remove FuncMap.fold
     "" func_repr result_repr "function %s: %s" "%s\n\n%s"
