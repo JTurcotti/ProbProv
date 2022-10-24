@@ -1,0 +1,35 @@
+def foo(a, b, c) -> (x, y) {
+    if c > 0 {
+        x, z = foo(b, a, c - 1);
+        z, y = foo(a, b, c - 1)
+    } else {
+        x, z = bar(a, a);
+        z, y = bar(b, b)
+    }
+}
+
+def bar(a, b) -> (x, y) {
+    g = gap();
+    if g > 20 {
+        x, y = baz(g)
+    } else {
+        if a > b {
+            z1, z2 = foo(a, b, a + b);
+            x = z1 + z2;
+            y = z1 - z2
+        } else {
+            x = a;
+            y = 0
+        }
+    }
+}
+
+def gap() -> (x) {
+    x = 0
+}
+
+def baz(a) -> (x, y) {
+    x = a * 200;
+    y = a + 1000
+}
+    

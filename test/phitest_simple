@@ -1,0 +1,23 @@
+def rand(i) -> (r) { r = i }
+
+def sel(x, y, i) -> (ret) {
+    if rand(i) {
+        ret = x
+    } else {
+        if rand(2 * i) {
+            ret = y
+        } else {
+            ret = 0
+        }
+    }
+}
+
+def loop(x, y, i) -> (ret) {
+    ret = sel(x, y, i + 1);
+    if rand(i + 2) {
+        ret = sel(ret, loop(x, y, i + 4), i + 3)
+    } else { skip }
+}
+
+
+        
