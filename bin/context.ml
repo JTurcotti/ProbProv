@@ -126,18 +126,20 @@ let event_internal_conj aie e : event =
     (IEMap.add (internal_event_conj aie ie)) in
   IEMap.fold build_new_event e event_zero
 
+exception BadPrecondition
+
 (* returns the conjunction of two events
-      Precondition: e2 contains no external events *)
+      Precondition: e1 contains no external events *)
 let event_conj e1 e2 : event =
-  let e1_with_ie ie =
+  let e2_with_ie ie =
     let acc_func br dir : event -> event = 
       event_internal_conj (AIE(br, dir)) in
-    BranchMap.fold acc_func ie e1 in
+    BranchMap.fold acc_func ie e2 in
   let acc_func ie ee : event -> event =
-    if ee != external_event_one then exit(1) else
-      event_disj (e1_with_ie ie)
+    if ee != external_event_one then raise BadPrecondition else
+      event_disj (e2_with_ie ie)
   in
-  IEMap.fold acc_func e2 IEMap.empty
+  IEMap.fold acc_func e1 IEMap.empty
 
 
 (* performs a merge of event options, doing either the trivial thing

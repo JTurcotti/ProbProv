@@ -23,9 +23,18 @@ def fib(x) -> (ret) {
     }
 }
 
-def baz() -> (x, y) {
-    z1 = 0;
-    z2 = 0;
+def inflow(a, b) -> (ret1, ret2) {
+    ret1 = a;
+    ret2 = a;
+    if 0 {
+        ret2 = b;
+        if 0 {
+            ret1 = b
+        } else { skip }
+    } else { skip }
+}
+
+def baz(z1, z2) -> (x, y) {
     if 0 {
         x = z1;
         y = z1
@@ -35,8 +44,10 @@ def baz() -> (x, y) {
     }
 }
 
-def baz_use() -> (x1, y1, x2, y2) {
-        x1, y1 = baz();
-        x2, y2 = baz()
+def baz_use(w1, w2) -> (z1, z2) {
+        x1, y1 = baz(w1, w2);
+        x2, y2 = baz(w1, w2);
+        z1 = x1 + y1;
+        z2 = x1 + y2
 }
         

@@ -27,10 +27,11 @@ let program = IO.(try
                with Lexer.FAIL ->
                  exit 1)
 
-
 let _ = print_endline (Expr_repr.program_string program)
+let typechecked_prog = (Typecheck.typecheck_program program)
 let _ = print_endline (Context_repr.typechecked_program_repr
-                         (Typecheck.typecheck_program program))
+                         typechecked_prog)
+                         
     
 
 
