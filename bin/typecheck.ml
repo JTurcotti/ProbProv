@@ -59,7 +59,7 @@ let func_blame_r fdecl label call blames res : blame =
     (fun (Arg(i, s)) ->
       blame_merge 
         (blame_external_conj
-           (CallEvent(call, Arg(i, s), res))
+           (CallEvent(call, Arg(i, s), res, true))
            (List.nth blames i))
     )
   in
@@ -202,8 +202,10 @@ let typecheck_fdecl prog fdecl : context option =
   Option.bind
     (typecheck_expr prog fdecl.body (fdecl_starting_ctxt fdecl))
     (fun ctxt -> ctxt
-                 |> (filter_to_ret_sites fdecl) |> filter_phantom_ret)
-
+                 |> (filter_to_ret_sites fdecl)
+                 |> Context_refactor.refactorize_context
+                 |> filter_phantom_ret)
+    
 type typechecked_program = TProgram of (fdecl * context option) FuncMap.t
 
 let typecheck_program (Program fdecls) : typechecked_program =

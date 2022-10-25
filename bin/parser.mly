@@ -20,6 +20,7 @@ fdecl: DEF IDENT ident_list TO ident_list LBRACE expr RBRACE {
 }
 
 ident_list: LPAREN idents RPAREN {$2}
+  | IDENT {[$1]}
 
 two_or_more_idents: IDENT COMMA IDENT {$1 :: $3 :: []}
   | IDENT COMMA two_or_more_idents {$1 :: $3}

@@ -8,9 +8,11 @@ let double_option_map combine opt1 opt2 =
   | Some v1, Some v2 -> Some (combine v1 v2)
 
 type atomic_external_event =
-  (* refers to the event of a function's return depending on its arg -
-     `call` identifies both a function at the specific callsite *)
-    CallEvent of call * arg * ret
+  (* refers to the event of a function's return depending on its arg (
+     or if it doesn't depend on its arg and `bool` is false) - 
+     `call` identifies both a function at the specific callsite
+  *)
+    CallEvent of call * arg * ret * bool
 
 module AEEOrdered = struct
   type t = atomic_external_event
@@ -40,6 +42,10 @@ type external_event = AEEDNFSet.t
 (* the external event that always occurs *)
 let external_event_one : external_event =
   AEEDNFSet.singleton aee_one
+
+(* the external event that never occurs *)
+let external_event_zero : external_event =
+  AEEDNFSet.empty
 
 (* conjunct a new atomic external event onto this external event *)
 let external_event_conj aee ee : external_event =
@@ -347,8 +353,6 @@ let context_merge_across_branches br : context -> context -> context =
     double_option_map (blame_merge_across_branch br) in
   LocalMap.merge merge_func
 
-(* end context utilities *)
-
 (* maps variables to events corresponding to the event under
    which that variable is "touched" i.e. assigned to.
    There should be NO EXTERNAL EVENTS included in the values of
@@ -396,3 +400,4 @@ let context_merge_cond br b_br e_t e_f c_t c_f : context =
           (assoc_touch_set_with_blame (compute_touch_set e_f) b_br)))
 
 
+(* end context utilities *)

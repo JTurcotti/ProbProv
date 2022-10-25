@@ -5,7 +5,7 @@ exception FAIL
 
 rule token = parse
      | [' ' '\t' '\n'] {token lexbuf}
-     | "//"[^'\n']* {token lexbuf}
+     | ("//" | '#')[^'\n']* {token lexbuf}
      | ['0'-'9']+ {CONST}
      |	'(' {LPAREN}
      |	')' {RPAREN}
