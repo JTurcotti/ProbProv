@@ -1,7 +1,7 @@
 module type SetLike =
 sig
   type elt
-  
+
   type t
 
   val fold: (elt -> 'a -> 'a) -> t -> 'a -> 'a
@@ -29,9 +29,9 @@ end
 module type EventLike =
 sig
   type t
-  
+
   type event
-      
+
   val conj: event -> event -> event
   val disj: event -> event -> event
   val pos: t -> event
@@ -52,7 +52,7 @@ sig
   type t
   val repr : t -> string
 end
-  
+
 
 module EventFormatter
     (Event : EventLike)
@@ -95,15 +95,15 @@ struct
 end
 
 (* OLD VERSION
-module ConstructIndependentEvent
+   module ConstructIndependentEvent
     (InnerSet : SetLike) (OuterSet : SetLike with type elt = InnerSet.t)
     (Event: EventLike with type t = InnerSet.elt) =
-struct
-  type t = InnerSet.elt
-  type iset = InnerSet.t
-  type oset = OuterSet.t
-      
-  let slice : oset -> (t * oset * oset) option = fun dset ->
+   struct
+   type t = InnerSet.elt
+   type iset = InnerSet.t
+   type oset = OuterSet.t
+
+   let slice : oset -> (t * oset * oset) option = fun dset ->
     let union_all = OuterSet.fold InnerSet.union dset InnerSet.empty in
     let (a_opt, _) =
       InnerSet.fold (fun t (best_t, best_t_cnt) ->
@@ -119,8 +119,8 @@ struct
       let b_fat, c = OuterSet.partition (InnerSet.mem a) dset in
       let b = OuterSet.map (InnerSet.remove a) b_fat in
       Some (a, b, c)
-      
-  let rec build s =
+
+   let rec build s =
     match slice s with
     | None -> Event.one
     | Some (a, b, c) ->
@@ -164,7 +164,14 @@ struct
           not (InnerSet.subset iset2 iset))
         (OuterSet.remove iset oset) true in
     OuterSet.filter not_subsumed oset
-      
+
+(* goal for `slice` is to choose an atomic event a, and return b and c such that
+   the passed event can be expressed as (a ∧ b) ∨ c.
+   `build`'s job below is then to ask for this slice of some event E, and
+   replace E with (a ∧ build(b ∨ c)) ∨ (ā ∧ build(c)) (note the recursive calls).
+   (a ∧ (b ∨ c)) ∨ (ā ∧ c) is equivalent to (a ∧ b) ∨ c, but much easier to compute
+   because the components of the top disjunction are exclusive. 
+*)
   let slice : oset -> (t * oset * oset) option = fun oset ->
     let union_all = OuterSet.fold InnerSet.union oset InnerSet.empty in
     let (a_opt, _) =
@@ -179,11 +186,9 @@ struct
     | None -> None
     | Some a ->
       let b_fat, c = OuterSet.partition (InnerSet.mem a) oset in
-      (* we call eliminate_subsumption here because the mapped removal
-         can introduce new subsumption (e.g. under remove a: a + b ↦ 1 + b) *)
-      let b = eliminate_subsumption (OuterSet.map (InnerSet.remove a) b_fat) in
+      let b = OuterSet.map (InnerSet.remove a) b_fat in
       Some (a, b, c)
-      
+
   let rec build (oset : oset) : oset =
     if OuterSet.is_empty oset then DOps.zero else
       match slice oset with
@@ -191,7 +196,11 @@ struct
       | Some (a, b, c) ->
         DOps.disj
           (DOps.conj_pos a
-             (build (OuterSet.union b c)))
+             (* we call eliminate_subsumption here because the mapped removal
+                can introduce new subsumption (e.g. under remove a: a + b ↦ 1 + b)
+                or the union with b after the mapped removal, and it is vital that we
+                recur into as small an object as possible *)
+             (build (eliminate_subsumption (OuterSet.union b c))))
           (DOps.conj_neg a
              (build c))
 end

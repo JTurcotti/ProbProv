@@ -266,19 +266,67 @@ exception PhantomRetLookedUpByLocal of local
 
 (* context utilities *)
 
-module Context_reduce =
+
+(*this module will use the functionality from refactor.ml to
+  perform necessary simplifications of context elements *)
+module Refactor =
 struct
+  (* external event refactorizer *)
+
+  module AEEDNFOps =
+  struct
+    type elt = atomic_external_event
+    type t = external_event
+    let conj_pos = external_event_conj
+    let conj_neg (CallEvent(c, a, r, b)) =
+      external_event_conj (CallEvent(c, a, r, not b))
+    let disj = external_event_disj
+    let one = external_event_one
+    let zero = external_event_zero
+  end
+
+  module EERefactorizer = Refactor.Refactorizer
+      (AEEConjunctiveSet)
+      (AEEDNFSet)
+      (AEEDNFOps)
+
+  let refactorize_external_event : external_event -> external_event
+    = EERefactorizer.build
+
+  (* end external event refactorizer *)
+
+  (* event refactorizer *)
+
+  let refactorize_event : event -> event
+    = IEMap.map refactorize_external_event
+
+  (* end event refactorizer *)
+
+  (* blame refactorizer *)
+
+  let refactorize_blame : blame -> blame
+    = SiteMap.map refactorize_event
+
+  (* end blame refactorizer *)
+
+  (* context refactorizer *)
+
+  let refactorize_context : context -> context
+    = LocalMap.map refactorize_blame
+
+  (* end context refactorizer *)
+
   (* FOLLOWING FUNCTIONS DEAL WITH CONTEXT REDUCTION *)
 
   (* This ensures that disjunctions of A and B, where A implies B,
      are reduced to just A*)
-  let external_event_reduce ext =
-    let not_implied_by_another aee_conj =
-      AEEDNFSet.fold (fun aee_conj2 bool ->
-          bool && not (AEEConjunctiveSet.subset aee_conj2 aee_conj)
-        ) (AEEDNFSet.remove aee_conj ext) true in
-    AEEDNFSet.filter not_implied_by_another ext
+  let external_event_reduce =
+    EERefactorizer.eliminate_subsumption
 
+  (* when we implement an IERefactorizer, this will be used as
+     a key component of the subset relation on internal events
+     when you do this, choose it carefully
+  *)
   let submap m1 m2 =
     BranchMap.fold (fun k v bool ->
         bool && (
@@ -288,18 +336,6 @@ struct
 
   let event_reduce event =
     let event2 = IEMap.map external_event_reduce event in
-  (*
-     this code takes care of removing internal event level
-     subsumption, but it doesn't seem to be needed yet
-     (such subsumption never introduced by typechecking)
-     feel free to uncomment if needed
-  let not_implied_by_another int ext =
-    IEMap.fold (fun int2 ext2 bool ->
-        bool && not (submap int2 int
-                     && 
-                     ext2 = ext)
-      ) (IEMap.remove int event2) true in
-  let event3 = IEMap.filter not_implied_by_another event2 in *)
     event2
 
   let blame_reduce blame =
@@ -392,10 +428,10 @@ let assoc_touch_set_with_blame ts b : context =
 *) 
 let context_merge_cond br b_br e_t e_f c_t c_f : context =
   context_merge_across_branches br
-    (Context_reduce.context_reduce
+    (Refactor.context_reduce
        (context_merge c_t
           (assoc_touch_set_with_blame (compute_touch_set e_t) b_br)))
-    (Context_reduce.context_reduce
+    (Refactor.context_reduce
        (context_merge c_f
           (assoc_touch_set_with_blame (compute_touch_set e_f) b_br)))
 

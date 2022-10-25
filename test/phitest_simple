@@ -1,10 +1,11 @@
-def rand(i) -> (r) { r = i }
+#meant to represent a pseudorandom generator
+def rand() -> (r) { r = 5 }
 
-def sel(x, y, i) -> (ret) {
-    if rand(i) {
+def sel(x, y) -> (ret) {
+    if rand() {
         ret = x
     } else {
-        if rand(2 * i) {
+        if rand() {
             ret = y
         } else {
             ret = 0
@@ -12,10 +13,10 @@ def sel(x, y, i) -> (ret) {
     }
 }
 
-def loop(x, y, i) -> (ret) {
-    ret = sel(x, y, i + 1);
-    if rand(i + 2) {
-        ret = sel(ret, loop(x, y, i + 4), i + 3)
+def loop(x, y) -> (ret) {
+    ret = sel(x, y);
+    if rand() {
+        ret = sel(ret, loop(x, y))
     } else { skip }
 }
 

@@ -203,7 +203,7 @@ let typecheck_fdecl prog fdecl : context option =
     (typecheck_expr prog fdecl.body (fdecl_starting_ctxt fdecl))
     (fun ctxt -> ctxt
                  |> (filter_to_ret_sites fdecl)
-                 |> Context_refactor.refactorize_context
+                 |> Context.Refactor.refactorize_context
                  |> filter_phantom_ret)
     
 type typechecked_program = TProgram of (fdecl * context option) FuncMap.t
@@ -211,5 +211,5 @@ type typechecked_program = TProgram of (fdecl * context option) FuncMap.t
 let typecheck_program (Program fdecls) : typechecked_program =
   TProgram (FuncMap.map (fun fdecl ->
       (fdecl,
-       Option.map Context_reduce.context_reduce 
+       Option.map Context.Refactor.context_reduce 
          (typecheck_fdecl (Program fdecls) fdecl))) fdecls)

@@ -31,8 +31,34 @@ let _ = print_endline (Expr_repr.program_string program)
 let typechecked_prog = (Typecheck.typecheck_program program)
 let _ = print_endline (Context_repr.typechecked_program_repr
                          typechecked_prog)
-                         
-    
 
 
+(* DEBUGGING
+let _ = Context_refactor.EERefactorizer.eliminate_subsumption
+let bld = Context_refactor.EERefactorizer.build
+let slc_repr x =
+  match Context_refactor.EERefactorizer.slice x with
+  | Some (a, b, c) -> Context_repr.(
+      Printf.sprintf "(%s, %s, %s)"
+        (aee_repr a)
+        (external_event_repr b)
+        (external_event_repr c)
+    )
+  | None -> "None"
 
+let _ = Context.(
+    let a = external_event_conj
+        (CallEvent(Call(Func("a"), 0), Arg(0, "x"), Ret(0, "x"), true))
+        external_event_one in
+    let b = external_event_conj
+        (CallEvent(Call(Func("b"), 0), Arg(0, "x"), Ret(0, "x"), true))
+        external_event_one in
+    let ab = external_event_disj a b in
+    let _ = print_endline "\n\n\n" in
+    let _ = print_endline (slc_repr ab) in
+    let out = bld ab in
+    print_endline (Context_repr.external_event_repr out)
+  )
+
+
+*)
