@@ -15,18 +15,28 @@ struct
   type blame_target =
     | BlameTgt of func * ret
 
+  (* these are the sites the type system identifies - they include flows from a call to a return
+     through the body of a function*)
   type blame_flow = blame_source * blame_target
 
+(* these are the flows that we need to figure out using equation solving - the flow from the
+   return of one function to the return of another via interprocedural calls *)
   type blame_teleflow = blame_target * blame_target
 
   type direct_blame_source =
     | DBlameLabel of label
     | DBlameArg of func * arg
 
+  (* these are a restricted version of the blame_flow type above - flows from calls to returns
+     are not included because we used computation of the teleflows to eliminate them *)
   type direct_blame_flow = direct_blame_source * blame_target
 end
 
 
+(*
+   this is used to model a conjunction of events and their inverse
+   in practice, for effeciency, should only be used for dependent events
+   *)
 module DependentEv(T : T) =
 struct
   module Map = Map(T)
@@ -37,41 +47,61 @@ struct
     Map.singleton x true
 end
 
+(*
+   Pi is the event that a branch is taken
+*)
 module Pi = DependentEv(struct type t = Expr.branch end)
 module PiMap = Map(Pi)
 module PiSet = Set(Pi)
 type pi = Pi.t
-
+            
+(*
+    Phi is the event that a function's result depends on its argument
+*)
 module Phi = DependentEv(struct type t = Context.atomic_external_event end)
 module PhiMap = Map(Phi)
 module PhiSet = Set(Phi)
 type phi = Phi.t
 
+(*
+   Beta is the event that an intraprocedural flow occurs
+   *)
 module Beta = DependentEv(struct type t = BlamePrim.blame_flow end)
 module BetaMap = Map(Beta)
 module BetaSet = Set(Beta)
 type beta = Beta.t
-
+(*
+   Eta is the event that a teleflow - from one func ret to another - occurs
+   *)
 module Eta = DependentEv(struct type t = BlamePrim.blame_teleflow end)
 module EtaMap = Map(Eta)
 module EtaSet = Set(Eta)
 type eta = Eta.t
 
+(*
+   Omega is the event that a possibly interprocedural flow occurs
+   *)
 module Omega = DependentEv(struct type t = BlamePrim.direct_blame_flow end)
 module OmegaMap = Map(Omega)
 module OmegaSet = Set(Omega)
 type omega = Omega.t
 
-module PiComputation = 
-struct
-  module Output = Pi
-  let compute _ = 0.5
-end
-
+(*
+   A ProgramAnalyzer should be initialized the the deferred computation of a
+   typechecked program. It's submodule Output contains a function getProgramBlame
+   that is used to perform the analysis
+*)
 module ProgramAnalyzer (DeferredProg : Defer with type t = Typecheck.typechecked_program) = 
 struct
   module GetProg = IdempotentDefer (DeferredProg)
   let get_program _ = match GetProg.get() with TProgram mp -> mp
+
+  
+  module PiComputation = 
+  struct
+    module Output = Pi
+    let compute _ = 0.5
+  end
   
   module PiComputationLayer = Layers.ConstantComputationLayer (Pi) (PiComputation)
 
@@ -141,7 +171,10 @@ struct
 
   module Output = struct
     type programOmegas = POmegas of float OmegaMap.t
-          
+
+    (* messy function, aggregates all direct blame flows for a program
+       including from args to rets and labels to rets
+    *)
     let getAllProgOmegas _ = Expr.(
         let prog = get_program () in
         let fdecl_omegas fdecl =
@@ -166,7 +199,12 @@ struct
                 OmegaSet.union (fdecl_omegas fdecl) omegas
               )) prog OmegaSet.empty
       )
-        
+
+
+    (* THIS IS THE ENTRY POINT TO THE ANALYZER
+       returns a map from all direct blame flows (i.e. omegas) to probabilities
+       optionally can pass a filter to only get for some blame flows
+    *)
     let getProgramBlame filter =
       POmegas (OmegaComputationLayer.compute (
         OmegaSet.filter filter (getAllProgOmegas())
