@@ -123,9 +123,6 @@ module IndirectComputationLayer
 struct
   module Output = Output
 
-  let id : Equations.EqnSystem(Output).eqn ->
-    Equations.EqnSystem(Action.Output).eqn = fun x -> x
-  
   module OutputSet = Set(Output)
   module InputSet = Set(Input)
   module OutputMap = Map(Output)

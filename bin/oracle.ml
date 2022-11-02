@@ -28,8 +28,8 @@ sig
   val query_dependence_hash : t -> dependence_hash
     
   (* returns the probability of a conjunction of t's occuring
-   precondition: same dependence_has for each *)
-  val query_dependent_group : oraclet -> t list -> oraclet * float
+   precondition: same dependence_hash for each *)
+  val query_dependent_group : t list -> oraclet * float
 end 
 
 module type ProbOracle =

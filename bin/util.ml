@@ -39,3 +39,25 @@ struct
 
   type t = T.t
 end
+
+module type Defer =
+sig
+  type t
+  val get : unit -> t
+end
+
+(* guarantees that the Src Defer is only called once *)
+module IdempotentDefer (Src : Defer) =
+struct
+  type t = Src.t
+
+  let x_opt : t option ref = ref None
+
+  let get _ =
+    match !x_opt with
+    | Some x -> x
+    | None ->
+      let x = Src.get () in
+      let () = x_opt := Some x in
+      x
+end
