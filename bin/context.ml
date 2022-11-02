@@ -25,10 +25,12 @@ module AEEConjunctiveSet = Set.Make(AEEOrdered)
 let aee_one = AEEConjunctiveSet.empty
 let aee_conj = AEEConjunctiveSet.add
 
+type aee_conjunction = AEEConjunctiveSet.t
+
 (* end aee conjunction utilities *)
 
 module AEEConjunctiveSetOrdered = struct
-  type t = AEEConjunctiveSet.t
+  type t = aee_conjunction
   let compare = Stdlib.compare
 end
 module AEEDNFSet = Set.Make(AEEConjunctiveSetOrdered)

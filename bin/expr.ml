@@ -4,9 +4,12 @@ let func_to_string (Func s) = s
 type local = Local of string
 let local_to_string (Local s) = s
 
+(* these types contain a bit of redundancy - the int is the number
+   of the art/ret and the string is the name *)
 type arg = Arg of int * string
 type ret = Ret of int * string
 
+(* the ints in each of these are unique identifiers *)
 type branch = Branch of int
 type label = Label of int
 type call = Call of func * int

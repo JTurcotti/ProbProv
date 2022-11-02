@@ -4,9 +4,8 @@ open Util
    responding with the same set's keys each mapped to floats *)
 module type ComputationLayer =
 sig
-  type outputSet
-  type 't outputMap
-  val compute : outputSet -> float outputMap
+  module Output : T
+  val compute : Set(Output).t -> float Map(Output).t
 end
 
 (* a constant computation layer contains constant values
@@ -15,23 +14,22 @@ end
    values are the ones stored internally *)
 module type ConstantComputation =
 sig
-  type output
-  val compute : output -> float
+  module Output : T
+  val compute : Output.t -> float
 end
 
-module ConstantComputationLayer
-    (Output : T)
+module ConstantComputationLayer (Output : T)
     (Action : ConstantComputation
-     with type output = Output.t) :
-  ComputationLayer 
-  with type outputSet = Set(Output).t
-  with type 't outputMap = 't Map(Output).t = 
+     with module Output = Output) :
+  (ComputationLayer 
+   with module Output = Output) =
 struct
+  module Output = Output
   module OutputSet = Set(Output)
   module OutputMap = Map(Output)
   
-  type outputSet = OutputSet.t
-  type 't outputMap = 't OutputMap.t
+  type request = OutputSet.t
+  type result = float OutputMap.t
       
   let compute output_request =
     OutputSet.fold (fun output_point output_result ->
@@ -41,10 +39,9 @@ end
 
 module type DirectComputation =
 sig
-  type output
-  type inputSet
-  type 't inputMap
-  val compute : output -> inputSet * (float inputMap -> float)
+  module Input : T
+  module Output : T
+  val compute : Output.t -> Set(Input).t * (float Map(Input).t -> float)
 end
 
 (* a direct computation layer takes input from another layer, and is able
@@ -62,24 +59,20 @@ module DirectComputationLayer
     (Input : T)
     (Output : T)
     (PredLayer : ComputationLayer 
-     with type outputSet = Set(Input).t
-     with type 't outputMap = 't Map(Input).t)
+     with module Output = Input)
     (Action : DirectComputation
-     with type output = Output.t
-     with type inputSet = Set(Input).t
-     with type 't inputMap = 't Map(Input).t) :
-  ComputationLayer 
-  with type outputSet = Set(Output).t
-  with type 't outputMap = 't Map(Output).t = 
+     with module Input = Input
+     with module Output = Output) :
+  (ComputationLayer 
+   with module Output = Output) = 
 struct
+  module Output = Output
+    
   module OutputSet = Set(Output)
   module InputSet = Set(Input)
   module OutputMap = Map(Output)
   module InputMap = Map(Input)
       
-  type outputSet = OutputSet.t
-  type 't outputMap = 't OutputMap.t
-
   (*
      compute here calls Action.compute on each input point,
      accumulating the input requests as well as the plans for
@@ -88,7 +81,7 @@ struct
      to the pred layer and its responses are fed to the plans
      to obtain the final results.
      *)
-  let compute (output_request : outputSet) =
+  let compute (output_request : OutputSet.t) =
     (* accumulate the needed inputs, and the desired outputs
        in terms of those inputs *)
     let input_request, output_plan =
@@ -109,33 +102,30 @@ end
 
 module type IndirectComputation =
 sig
-  type output
-  type outputSet
-  type outputEqn
-                       
-  type inputSet
-  type 't inputMap
+  module Input : T
+  module Output : T
       
-  val compute : output -> inputSet * outputSet *
-                          (float inputMap -> outputEqn)
+  val compute : Output.t ->
+    Set(Input).t * Set(Output).t *
+    (float Map(Input).t -> Equations.EqnSystem(Output).eqn)
 end
 
 module IndirectComputationLayer
     (Input : T)
     (Output : T)
     (PredLayer : ComputationLayer 
-     with type outputSet = Set(Input).t
-     with type 't outputMap = 't Map(Input).t)
+     with module Output = Input)
     (Action : IndirectComputation
-     with type output = Output.t
-     with type outputSet = Set(Output).t
-     with type outputEqn = Equations.EqnSystem(Output).eqn
-     with type inputSet = Set(Input).t
-     with type 't inputMap = 't Map(Input).t) :
-    ComputationLayer 
-    with type outputSet = Set(Output).t
-    with type 't outputMap = 't Map(Output).t =
+     with module Input = Input
+     with module Output = Output) :
+  (ComputationLayer
+   with module Output = Output) = 
 struct
+  module Output = Output
+
+  let id : Equations.EqnSystem(Output).eqn ->
+    Equations.EqnSystem(Action.Output).eqn = fun x -> x
+  
   module OutputSet = Set(Output)
   module InputSet = Set(Input)
   module OutputMap = Map(Output)
@@ -145,6 +135,9 @@ struct
   type inputSet = InputSet.t
   type 't inputMap = 't InputMap.t
   type 't outputMap = 't OutputMap.t
+
+  type request = outputSet
+  type result = float outputMap
 
   module EqnSolver = Equations.EqnSystem(Output)
   type eqn = EqnSolver.eqn
@@ -197,5 +190,26 @@ struct
     OutputMap.filter (fun output_req _ ->
         OutputSet.mem output_req output_request) eqn_solve_result
 end
+
+module AggregatorLayer
+    (Left : T)
+    (Right : T)
+    (PredLayerLeft : ComputationLayer
+     with module Output = Left)
+    (PredLayerRight : ComputationLayer
+     with module Output = Right) :
+  (ComputationLayer 
+   with module Output = Union(Left)(Right)) =
+  struct
+    module Output = Union(Left)(Right)
+      
+  let compute output_request =
+    let l_request, r_request = Output.splitSet output_request in
+    let l_result = PredLayerLeft.compute l_request in
+    let r_result = PredLayerRight.compute r_request in
+    Output.joinMap l_result r_result
+end
+
+
 
 let s = "a"

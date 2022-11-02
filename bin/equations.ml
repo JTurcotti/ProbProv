@@ -75,12 +75,17 @@ sig
 
   val solve : system -> float varMap
 end
-    
 
-module EqnSystem (Variable : T) :
-  (EqnSolver
-   with type var = Variable.t
-   with type 't varMap = 't Map(Variable).t) =
+type 'var expr_constr =
+    | Const of float
+    | Var of 'var
+    | Mult of 'var expr_constr * 'var expr_constr
+    | Add of 'var expr_constr * 'var expr_constr
+    
+type ('var, 'expr) eqn_constr =
+  | Eqn of 'var * 'expr
+
+module EqnSystem (Variable : T) =
 struct
   type var = Variable.t
 
@@ -90,19 +95,14 @@ struct
   module VarMap = Map(Variable)
   type 't varMap = 't VarMap.t
     
-  type expr =
-    | Const of float
-    | Var of var
-    | Mult of expr * expr
-    | Add of expr * expr
+  type expr = var expr_constr
 
   let const_expr f = Const(f)
   let var_expr v = Var(v)
   let mult_expr e1 e2 = Mult(e1, e2)
   let add_expr e1 e2 = Add(e1, e2)
 
-  type eqn =
-    | Eqn of var * expr
+  type eqn = (var, expr) eqn_constr
 
   module EqnSet = Set(struct type t = eqn end)
   type eqnSet = EqnSet.t
