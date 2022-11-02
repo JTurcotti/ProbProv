@@ -32,7 +32,6 @@ let typechecked_prog = (Typecheck.typecheck_program program)
 let _ = print_endline (Context_repr.typechecked_program_repr
                          typechecked_prog)
 
-
 (* DEBUGGING
 let _ = Context_refactor.EERefactorizer.eliminate_subsumption
 let bld = Context_refactor.EERefactorizer.build
@@ -62,3 +61,14 @@ let _ = Context.(
 
 
 *)
+
+module StrSystem = Equations.EqnSystem(struct type t = string end)
+
+let str_map_repr s = StrSystem.VarMap.fold (fun s d r ->
+    Printf.sprintf "%s:%f, %s" s d r) s ""
+
+let _ = print_endline (str_map_repr (StrSystem.(solve (
+    add (Eqn ("x", (Mult (Var "y" , Var "y"))))
+      (add (Eqn ("y", (Add (Var "x" , Const 0.25))))
+         empty)
+  ))))

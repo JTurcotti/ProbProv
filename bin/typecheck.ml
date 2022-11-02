@@ -39,7 +39,7 @@ let equiv_n_singleton_bind n l f =
       | [l'] ->
         if List.length l' = n then f l' else []
       | _ ->
-        if List.length l != n then [] else
+        if List.length l <> n then [] else
           let l' = List.filter_map (function
               | [x] -> Some x
               | _ -> None) l in
@@ -77,7 +77,7 @@ let func_blame_r fdecl label call blames res : blame =
    *)
 exception BadAttemptAtFuncBlame of int * int
 let func_blame fdecl label call blames : blame list =
-  if List.length blames != fdecl.num_params then
+  if List.length blames <> fdecl.num_params then
     raise (BadAttemptAtFuncBlame(List.length blames, fdecl.num_params))
   else
     List.map (func_blame_r fdecl label call blames) fdecl.results
@@ -171,7 +171,7 @@ let rec typecheck_expr prog expr ctxt: context option =
        otherwise perform each assignment *)
     let blame_list = typecheck_aexp prog ctxt a in
     if blame_list = [] then None else
-    if List.length v_list != List.length blame_list then
+    if List.length v_list <> List.length blame_list then
       raise(BadMultiAssign(List.length v_list, List.length blame_list))
     else
       Some (List.fold_right2 context_assign v_list blame_list ctxt)
@@ -203,13 +203,12 @@ let typecheck_fdecl prog fdecl : context option =
     (typecheck_expr prog fdecl.body (fdecl_starting_ctxt fdecl))
     (fun ctxt -> ctxt
                  |> (filter_to_ret_sites fdecl)
-                 |> Context.Refactor.refactorize_context
+                 (*|> Context.Refactor.refactorize_context*)
+                 |> Context.Refactor.context_reduce
                  |> filter_phantom_ret)
     
 type typechecked_program = TProgram of (fdecl * context option) FuncMap.t
 
 let typecheck_program (Program fdecls) : typechecked_program =
   TProgram (FuncMap.map (fun fdecl ->
-      (fdecl,
-       Option.map Context.Refactor.context_reduce 
-         (typecheck_fdecl (Program fdecls) fdecl))) fdecls)
+      (fdecl, typecheck_fdecl (Program fdecls) fdecl)) fdecls)

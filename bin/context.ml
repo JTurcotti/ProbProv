@@ -142,7 +142,7 @@ let event_conj e1 e2 : event =
       event_internal_conj (AIE(br, dir)) in
     BranchMap.fold acc_func ie e2 in
   let acc_func ie ee : event -> event =
-    if ee != external_event_one then raise BadPrecondition else
+    if ee <> external_event_one then raise BadPrecondition else
       event_disj (e2_with_ie ie)
   in
   IEMap.fold acc_func e1 IEMap.empty

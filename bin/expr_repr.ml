@@ -3,7 +3,7 @@ open Expr
 exception WrongLenPassed
 
 let int_to_digit_repr dig_reprs i =
-  if List.length dig_reprs != 10 then
+  if List.length dig_reprs <> 10 then
     raise WrongLenPassed else
     let repr i =
       List.nth dig_reprs i in
