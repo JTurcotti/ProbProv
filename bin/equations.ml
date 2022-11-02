@@ -49,7 +49,38 @@ let result_filename = "ocaml_matlab_eqn_out"
 let matlab_runcmd = Printf.sprintf
     {|matlab -nojvm -batch "%s" > %s|} output_scriptname result_filename
 
-module EqnSystem (Variable : T) =
+(*
+An EqnSolver allows you to build up a system of equations over
+   variables of some parameterized type, and solve for float values
+   of them
+*)
+module type EqnSolver =
+sig
+  type var
+  type 't varMap
+  type expr
+  type eqn
+
+  type system
+
+  val const_expr : float -> expr
+  val var_expr : var -> expr
+  val mult_expr : expr -> expr -> expr
+  val add_expr : expr -> expr -> expr
+
+  val eqn_of : var -> expr -> eqn
+
+  val empty : system
+  val add : eqn -> system -> system
+
+  val solve : system -> float varMap
+end
+    
+
+module EqnSystem (Variable : T) :
+  (EqnSolver
+   with type var = Variable.t
+   with type 't varMap = 't Map(Variable).t) =
 struct
   type var = Variable.t
 
@@ -57,6 +88,7 @@ struct
   type varSet = VarSet.t
 
   module VarMap = Map(Variable)
+  type 't varMap = 't VarMap.t
     
   type expr =
     | Const of float
@@ -64,8 +96,15 @@ struct
     | Mult of expr * expr
     | Add of expr * expr
 
+  let const_expr f = Const(f)
+  let var_expr v = Var(v)
+  let mult_expr e1 e2 = Mult(e1, e2)
+  let add_expr e1 e2 = Add(e1, e2)
+
   type eqn =
     | Eqn of var * expr
+
+  let eqn_of v e = Eqn(v, e)
 
   type system =
     | Sys of varSet * eqn list
@@ -96,7 +135,7 @@ struct
       
   (* read a matlab output file as a list of floats,
      can throw Sys_error  *)
-  let read_matlab_result i_var : float VarMap.t =
+  let read_matlab_result i_var : float varMap =
     let ic = open_in result_filename in
     (*skip over everything through start line *)
     let input_or_syserr s = try input_line ic with
@@ -123,7 +162,7 @@ struct
       
   exception SolveFailure of string
   
-  let solve (Sys(vars, eqns)) : float VarMap.t =
+  let solve (Sys(vars, eqns)) : float varMap = 
     let n_vars = VarSet.cardinal vars in
     let vars_list = VarSet.elements vars in
     let vars_index, _ = List.fold_left (fun (mp, i) var ->
