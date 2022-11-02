@@ -62,6 +62,9 @@ let _ = Context.(
 
 *)
 
+let _ = print_endline Layers.s
+
+(* DEBUGGING
 module StrSystem = Equations.EqnSystem(struct type t = string end)
 
 let str_map_repr s = StrSystem.VarMap.fold (fun s d r ->
@@ -72,3 +75,4 @@ let _ = print_endline (str_map_repr (StrSystem.(solve (
       (add (Eqn ("y", (Add (Var "x" , Const 0.25))))
          empty)
   ))))
+*)

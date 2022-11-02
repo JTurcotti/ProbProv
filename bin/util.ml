@@ -4,8 +4,10 @@ module Ord (T : T) = struct
   let compare = Stdlib.compare
 end
 
-module Set (T : T) = 
-  Set.Make(Ord(T))
+module Set (T : T) =
+struct 
+  include Set.Make(Ord(T))
+end
     
 module Map (T : T) = 
   Map.Make(Ord(T))

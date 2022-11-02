@@ -104,10 +104,13 @@ struct
   type eqn =
     | Eqn of var * expr
 
+  module EqnSet = Set(struct type t = eqn end)
+  type eqnSet = EqnSet.t
+
   let eqn_of v e = Eqn(v, e)
 
   type system =
-    | Sys of varSet * eqn list
+    | Sys of varSet * eqnSet
 
   let vars_of_eqn =
     let rec vars_of_expr =
@@ -119,9 +122,10 @@ struct
     function
     | Eqn(v, e) -> VarSet.add v (vars_of_expr e)
 
-  let empty = Sys (VarSet.empty, [])
+  let empty = Sys (VarSet.empty, EqnSet.empty)
   let add eqn (Sys (vars, eqns)) =
-    Sys(VarSet.union vars (vars_of_eqn eqn), eqn :: eqns)
+    Sys(VarSet.union (vars_of_eqn eqn) vars,
+        EqnSet.add eqn eqns)
 
   (* given a list of matlab equations referring to variables
      x(1), x(2), ..., x(n_vars), solve it with matlab and store
@@ -179,9 +183,8 @@ struct
         Printf.sprintf "(%s + %s)" (expr_repr e1) (expr_repr e2) in
     let eqn_repr = function
       | Eqn(v, e) -> Printf.sprintf "x(%d) - (%s)" (var_i v) (expr_repr e) in
-    let eqns_repr = List.fold_right (fun eqn repr ->
+    let eqns_repr = EqnSet.fold (fun eqn repr ->
         Printf.sprintf "%s, %s" (eqn_repr eqn) repr) eqns "" in
-    (* now we've created an actual MATLAB program! *)
     try
       let out_code = exec_matlab_solve n_vars eqns_repr in
       let () = if out_code <> 0 then
@@ -191,6 +194,3 @@ struct
       raise (SolveFailure s)
 end
 
-
-    
-    
