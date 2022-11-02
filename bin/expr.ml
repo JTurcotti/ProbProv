@@ -1,3 +1,5 @@
+open Util
+
 type func = Func of string
 let func_to_string (Func s) = s
 
@@ -39,12 +41,11 @@ type fdecl = {
   body: expr;
 }
 
-module FuncKey = struct
+module Func = struct
   type t = func
-  let compare = Stdlib.compare
 end
 
-module FuncMap = Map.Make(FuncKey)
+module FuncMap = Map(Func)
 type program = Program of fdecl FuncMap.t
 
 let lookup_func_opt f (Program mp) : fdecl option =
@@ -134,3 +135,31 @@ let label_prog raw_prog =
         FuncMap.add (Func(fdecl.raw_name)) (label_fdecl fdecl) prog
       ) FuncMap.empty flist)
   )
+
+module LabelSet = Set(struct type t = label end)
+
+let rec aexpr_labels : aexp -> LabelSet.t =
+  function
+  | Var (_, l) -> LabelSet.singleton l
+  | Const l -> LabelSet.singleton l
+  | Binop (a1, a2, l) -> LabelSet.add l (LabelSet.union
+                                           (aexpr_labels a1)
+                                           (aexpr_labels a2))
+  | Unop (a, l) -> LabelSet.add l (aexpr_labels a)
+  | FApp (_, a_list, l, _) ->
+    LabelSet.add l (List.fold_right (fun a ls ->
+        LabelSet.union (aexpr_labels a) ls) a_list LabelSet.empty)
+
+let rec expr_labels : expr -> LabelSet.t =
+  function
+  | Skip -> LabelSet.empty
+  | Cond (a, e1, e2, _) ->
+    LabelSet.union (aexpr_labels a) (LabelSet.union
+                                       (expr_labels e1)
+                                       (expr_labels e2))
+  | Assign (_, a) -> aexpr_labels a
+  | FAssign (_, a) -> aexpr_labels a
+  | Seq (e1, e2) -> LabelSet.union (expr_labels e1) (expr_labels e2)
+  | Assert (_, a) -> aexpr_labels a
+  | AExp a -> aexpr_labels a
+  

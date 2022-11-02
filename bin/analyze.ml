@@ -13,7 +13,7 @@ struct
     | BlameArg of func * arg
 
   type blame_target =
-    | BlameSrc of func * ret
+    | BlameTgt of func * ret
 
   type blame_flow = blame_source * blame_target
 
@@ -32,6 +32,9 @@ struct
   module Map = Map(T)
 
   type t = bool Map.t
+
+  let singleton x =
+    Map.singleton x true
 end
 
 module Pi = DependentEv(struct type t = Expr.branch end)
@@ -68,7 +71,7 @@ end
 module ProgramAnalyzer (DeferredProg : Defer with type t = Typecheck.typechecked_program) = 
 struct
   module GetProg = IdempotentDefer (DeferredProg)
-  let get_program _ = GetProg.get()
+  let get_program _ = match GetProg.get() with TProgram mp -> mp
   
   module PiComputationLayer = Layers.ConstantComputationLayer (Pi) (PiComputation)
 
@@ -138,23 +141,35 @@ struct
 
   module Output = struct
     type programOmegas = POmegas of float OmegaMap.t
-
-    let getAllProgOmegas _ =
-      let prog = get_program () in
-      let fdecl_omegas fdecl = (
-        List.fold_right (fun ret omegas ->
-            OmegaSet.add (
-      ) in
-      Expr.(
-        FuncMap.fold (fun fdecl ctxt_opt omegas ->
+          
+    let getAllProgOmegas _ = Expr.(
+        let prog = get_program () in
+        let fdecl_omegas fdecl =
+          let fdecl_labels = expr_labels fdecl.body in
+          List.fold_right (fun ret omegas ->
+              let tgt = BlamePrim.BlameTgt (fdecl.name, ret) in
+              List.fold_right (fun arg omegas ->
+                  OmegaSet.add
+                    (Omega.singleton (BlamePrim.DBlameArg (fdecl.name, arg), tgt))
+                    omegas
+                ) fdecl.params
+                (LabelSet.fold (fun l omegas ->
+                     OmegaSet.add
+                       (Omega.singleton (BlamePrim.DBlameLabel l, tgt))
+                       omegas
+                   ) fdecl_labels omegas)
+            ) fdecl.results OmegaSet.empty in
+        FuncMap.fold (fun _ (fdecl, ctxt_opt) omegas ->
             match ctxt_opt with
-            | None -> flows
+            | None -> omegas
             | Some _ -> (
-                OmegaSet.
+                OmegaSet.union (fdecl_omegas fdecl) omegas
               )) prog OmegaSet.empty
       )
-          
+        
     let getProgramBlame filter =
-      
+      POmegas (OmegaComputationLayer.compute (
+        OmegaSet.filter filter (getAllProgOmegas())
+      ))
   end
 end
