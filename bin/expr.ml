@@ -74,21 +74,18 @@ let label_prog raw_prog =
       let label_counter = ref 0 in
       (* we use this to ensure each call to the same function
          gets a distinct index *)
-      let call_counter = ref FuncMap.empty in
+      let call_counter = ref 0 in
+      let inc_counter wrap_i c _ =
+        let () = c := !c + 1 in
+        wrap_i (!c - 1) in
       let next_branch _ =
-        let () = branch_counter := !branch_counter + 1 in
-        Branch(!branch_counter - 1) in
+        inc_counter (fun i -> Branch i) branch_counter () in
       let next_label _ =
-        let () = label_counter := !label_counter + 1 in
-        Label(!label_counter - 1) in
+        inc_counter (fun i -> Label i) label_counter () in
       let next_call f =
-        let i = match FuncMap.find_opt f !call_counter with
-          | None -> 0
-          | Some i -> i in
-        let () = call_counter := (FuncMap.add f (i + 1) !call_counter) in
-        Call(f, i) in
-    let rec label_aexp raw_aexpr =
-      match raw_aexpr with
+        inc_counter (fun i -> Call(f, i)) call_counter () in
+      let rec label_aexp raw_aexpr =
+        match raw_aexpr with
       | Raw_Var s -> Var(Local(s), next_label())
       | Raw_Const -> Const(next_label())
       | Raw_Binop (a, a') ->
