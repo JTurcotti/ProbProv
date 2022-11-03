@@ -28,9 +28,6 @@ struct
   module OutputSet = Set(Output)
   module OutputMap = Map(Output)
   
-  type request = OutputSet.t
-  type result = float OutputMap.t
-      
   let compute output_request =
     OutputSet.fold (fun output_point output_result ->
         OutputMap.add output_point (Action.compute output_point)
@@ -132,9 +129,6 @@ struct
   type inputSet = InputSet.t
   type 't inputMap = 't InputMap.t
   type 't outputMap = 't OutputMap.t
-
-  type request = outputSet
-  type result = float outputMap
 
   module EqnSolver = Equations.EqnSystem(Output)
   type eqn = EqnSolver.eqn
