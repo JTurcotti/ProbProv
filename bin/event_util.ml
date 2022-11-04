@@ -36,14 +36,11 @@ end
 module DependentEv(T : DepHashT) =
 struct
   module Elt = T
-  
+
   module Set = Set(T)
 
   type t = Set.t
   type elt = Elt.t
-
-  let singleton x =
-    Set.singleton x
 
   (**
      this verifies that all events are indeed dependent (hash-constant)
@@ -60,18 +57,21 @@ struct
 
   let assert_dep de =
     if verify_dep de then () else raise NotDependent
+
+  let singleton = Set.singleton
 end
 
+(* though it should be the case that X ∨ X = X, don't try it for this implementation*)
 module DependentDisj (L : DepHashT) (R : DepHashT) =
 struct
   module LRDisj =
   struct
     type t = Left of L.t |
              Right of R.t 
-                      
+
     type hash_t = HLeft of L.hash_t |
-                HRight of R.hash_t
-                            
+                  HRight of R.hash_t
+
     let hash = function
       | Left t -> HLeft (L.hash t)
       | Right t -> HRight (R.hash t)
@@ -87,6 +87,12 @@ struct
 
     type outer_disj = Left of DepEvL.t | Right of DepEvR.t
 
+    module LSet = DepEvL.Set
+    module RSet = DepEvR.Set
+    module LRSet = DepEvLR.Set
+
+    exception DependentEvNotDependent
+
     (**
        A dependent event build over a disjunction must resolve to a dependent
        event exclusively over one of the disjuncted modules.
@@ -94,20 +100,44 @@ struct
        `resolve` follows from the definition of the hash function for a disjunction:
        elements of the respective modules always have distinct hashes
     *)
-    let resolve : DepEvLR.t -> outer_disj = _
+    let resolve : DepEvLR.t -> outer_disj = fun dep_lr ->
+      let candidate_left, candidate_right =
+        LRSet.fold (fun d (c_left, c_right) ->
+            match d with
+            | LRDisj.Left t -> (LSet.add t c_left, c_right)
+            | LRDisj.Right t -> (c_left, RSet.add t c_right)
+          ) dep_lr (LSet.empty, RSet.empty) in
+      match (LSet.is_empty candidate_left, LSet.is_empty candidate_right) with
+      | true, true -> Left (candidate_left) (*arbitrary_choice *)
+      | false, false -> raise DependentEvNotDependent (*badly constructed*)
+      | true, false -> Left (candidate_left)
+      | false, true -> Right (candidate_right)
+
+    (* these differ from LSet, RSet, LRSet by being sets of those *)
+    module DepLSet = Set(DepEvL)
+    module DepRSet = Set(DepEvR)
+    module DepLRSet = Set(DepEvLR)
 
     (**
        `split_set` applies `resolve` to separate a set of disjucted dep evs 
     *)
-    let split_set : Set(DepEvLR).t -> Set(DepEvL).t * Set(DepEvR).t = _
-
+    let split_set : DepLRSet.t -> DepLSet.t * DepRSet.t = fun dep_lr_set ->
+      DepLRSet.fold (fun dep_lr (l_set, r_set) ->
+          match resolve dep_lr with
+          | Left d -> (DepLSet.add d l_set, r_set)
+          | Right d -> (l_set, DepRSet.add d r_set)
+        ) dep_lr_set (DepLSet.empty, DepRSet.empty)
 
     (**
        `multiplex` combines providers from left and right dep evs into a
        provider for disjunct
     *)
     let multiplex :
-      (DepEvL.t -> 'a) -> (DepEvR.t -> 'a) -> (DepEvLR.t -> 'a) = _
+      (DepEvL.t -> 'a) -> (DepEvR.t -> 'a) -> (DepEvLR.t -> 'a) =
+      fun l_provider r_provider lr_request ->
+      match resolve lr_request with
+      | Left d -> l_provider d
+      | Right d -> r_provider d
   end
 end
-                            
+

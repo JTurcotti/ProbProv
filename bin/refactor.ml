@@ -27,8 +27,12 @@ sig
 
   val singleton: elt -> t
 
+  val add: elt -> t -> t
+
   (* be careful with this - definition should correspond to event implication *)
   val subset: t -> t -> bool
+
+  val map_reduce: (elt -> 'a) -> ('a -> 'a -> 'a) -> 'a -> t -> 'a
 end
 
 (*
@@ -237,7 +241,7 @@ struct
     Dep.Set.fold (fun d -> S.add d.el) de S.empty
 end
 
-module DerivedDoubleSet (T : NegHashT) =
+module DerivedDoubleSet (T : DepHashT) =
 struct
   module D = Derived(T)
   module DNF = DoubleSet (Set(D)) (Set(Set(D))) (D)
@@ -305,7 +309,7 @@ struct
            and transform each to a dependent event. The correct arithmetic
            to compute the probability of the original is the difference
            in probabilities of the full conjunction and the negative component *)
-        let full_dep, neg_dep = lower_to_set dep_conj, lower_to_set neg_conj in
+        let full_dep, neg_dep = D.lower_to_set dep_conj, D.lower_to_set neg_conj in
         (* this corresponds to ℙ(AB̄) = ℙ(A) - ℙ(AB) *)
         synth_sub (synth_var full_dep) (synth_var neg_dep) in
       
@@ -317,11 +321,10 @@ struct
             DHashMap.update hash (function
                 | None -> Some (DNF.InnerSet.singleton d)
                 | Some s -> Some (DNF.InnerSet.add d s)
-              )
+              ) hashed_ev
           ) conj DHashMap.empty in
-        DHashMap.unital_fold
-          (fun _ dep_conj -> synth_mult (synth_dep_conj dep_conj))
-          hashed_ev synth_one in
-      DNF.OuterSet.unital_fold (compose separate_conj synth_add) dnf synth_zero
+        DHashMap.map_reduce
+          (fun _ -> synth_dep_conj) synth_mult synth_one hashed_ev in
+      DNF.OuterSet.map_reduce separate_conj synth_add synth_zero dnf
   end
 end

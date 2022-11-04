@@ -1,4 +1,5 @@
 open Expr
+open Util
 
 let double_option_map combine opt1 opt2 =
   match (opt1, opt2) with
@@ -14,11 +15,7 @@ type atomic_external_event =
   *)
     CallEvent of call * arg * ret * bool
 
-module AEEOrdered = struct
-  type t = atomic_external_event
-  let compare = Stdlib.compare
-end
-module AEEConjunctiveSet = Set.Make(AEEOrdered)
+module AEEConjunctiveSet = Set(struct type t = atomic_external_event end)
 
 (* aee conjunction utilities *)
 
@@ -29,11 +26,7 @@ type aee_conjunction = AEEConjunctiveSet.t
 
 (* end aee conjunction utilities *)
 
-module AEEConjunctiveSetOrdered = struct
-  type t = aee_conjunction
-  let compare = Stdlib.compare
-end
-module AEEDNFSet = Set.Make(AEEConjunctiveSetOrdered)
+module AEEDNFSet = Set(struct type t = aee_conjunction end)
 
 (* an external event is a combination of atomic
    external events in DNF *)
@@ -57,12 +50,6 @@ let external_event_conj aee ee : external_event =
 let external_event_disj = AEEDNFSet.union
 
 (* end external event utilities *)
-
-module BranchOrdered = struct
-  type t = branch
-  let compare = Stdlib.compare
-end
-module BranchMap = Map.Make(BranchOrdered)
 
 (* an atomic_internal_event is a preference about how a branch is taken *)
 type atomic_internal_event = AIE of branch * bool
@@ -90,11 +77,7 @@ let internal_event_conj (AIE (br, dir)) ie : internal_event =
   BranchMap.add br dir ie
 (* end internal event utilities *)
 
-module IEKey = struct
-  type t = internal_event
-  let compare = Stdlib.compare
-end
-module IEMap = Map.Make(IEKey)
+module IEMap = Map(struct type t = internal_event end)
 
 (* an event is a set of sequences of branches (internal events),
    each associated with an external event.
@@ -198,11 +181,7 @@ let is_phantom_ret s =
   | PhantomRetSite _ -> true
   | _ -> false
 
-module SiteKey = struct
-  type t = site
-  let compare = Stdlib.compare
-end
-module SiteMap = Map.Make(SiteKey)
+module SiteMap = Map(struct type t = site end)
 
 (* a blame provides all the information one could care to know about
    provenance of a value - initially it is a very complex object but
@@ -255,11 +234,7 @@ let blame_event_conj b e : blame =
 
 (* end blame utilities *)
 
-module LocalKey = struct
-  type t = local
-  let compare = Stdlib.compare
-end
-module LocalMap = Map.Make(LocalKey)
+module LocalMap = Map(struct type t = local end)
 
 (* this is our typing context! associating blame with local variables *)
 type context = blame LocalMap.t
@@ -281,32 +256,6 @@ struct
       (AEEConjunctiveSet)
       (AEEDNFSet)
       (struct type t = atomic_external_event let neg (CallEvent(c, a, r, b)) = (CallEvent(c, a, r, not b)) end)
-
-  let refactorize_external_event : external_event -> external_event
-    = EERefactorizer.build
-
-  (* end external event refactorizer *)
-
-  (* event refactorizer *)
-
-  let refactorize_event : event -> event
-    = IEMap.map refactorize_external_event
-
-  (* end event refactorizer *)
-
-  (* blame refactorizer *)
-
-  let refactorize_blame : blame -> blame
-    = SiteMap.map refactorize_event
-
-  (* end blame refactorizer *)
-
-  (* context refactorizer *)
-
-  let refactorize_context : context -> context
-    = LocalMap.map refactorize_blame
-
-  (* end context refactorizer *)
 
   (* FOLLOWING FUNCTIONS DEAL WITH CONTEXT REDUCTION *)
 

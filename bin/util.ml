@@ -1,3 +1,5 @@
+let compose f g x = g (f x)
+
 module type T = sig type t end
 
 module Ord (T : T) = struct
@@ -9,10 +11,10 @@ module Set (T : T) =
 struct
   include Set.Make(Ord(T))
 
-  let unital_fold reduce t unit =
+  let map_reduce map reduce unit t =
     match choose_opt t with
     | None -> unit
-    | Some el -> fold reduce (remove el t) el
+    | Some el -> fold (compose map reduce) (remove el t) (map el)
 end
 
 module Map (T : T) =
@@ -22,10 +24,10 @@ struct
   let from_elem_foo elems foo =
     List.fold_right (fun e -> add e (foo e)) elems empty
 
-  let unital_fold reduce t unit =
+  let map_reduce map reduce unit t =
     match choose_opt t with
     | None -> unit
-    | Some (k, v) -> fold reduce (remove k t) (k, v)
+    | Some (k, v) -> fold (fun k v -> reduce (map k v)) (remove k t) (map k v)
 
 end
 
@@ -80,8 +82,6 @@ struct
       x
 end
 
-
-let compose f g x = g (f x)
 
 let unicode_bar = "\u{0305}"
 let unicode_bar_cond b = if b then "" else unicode_bar

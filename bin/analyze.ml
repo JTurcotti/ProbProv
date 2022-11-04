@@ -193,7 +193,6 @@ struct
           EqnS.var_expr phi in
         let piphi_provider =
           PiPhi.DependentEvUtils.multiplex pi_provider phi_provider in
-        let mult, add, sub = EqnS.mult_expr, EqnS.add_expr, EqnS.sub_expr in
         let eqn_expr = synthesizer piphi_provider in
         EqnS.eqn_of phi eqn_expr in
       (pi_request, phi_request, eqn_plan)
@@ -209,10 +208,10 @@ struct
          may be a product of blames
       *)
       let dnf = Phi.Set.fold (fun call_event ->
-          call_event |> get_call_event_blame |> DNF.of_event |> DNF.conj)
+          call_event |> get_call_event_blame |> PiPhi.of_event |> DNF.conj)
           phi DNF.one in
       
-      create_plan_from_dnf dnf
+      create_plan_from_dnf dnf phi
   end
 
   module PhiComputationLayer = Layers.IndirectComputationLayer (Pi) (Phi)
@@ -275,15 +274,19 @@ struct
         let fdecl_omegas fdecl =
           let fdecl_labels = expr_labels fdecl.body in
           List.fold_right (fun ret omegas ->
-              let tgt = BlamePrim.BlameTgt (fdecl.name, ret) in
+              let tgt = {bt_func=fdecl.name; bt_ret=ret} in
               List.fold_right (fun arg omegas ->
                   OmegaSet.add
-                    (Omega.singleton (BlamePrim.DBlameArg (fdecl.name, arg), tgt))
+                    (Omega.singleton {
+                        dbf_src=BlamePrim.DBlameArg (fdecl.name, arg);
+                        dbf_tgt=tgt})
                     omegas
                 ) fdecl.params
                 (LabelSet.fold (fun l omegas ->
                      OmegaSet.add
-                       (Omega.singleton (BlamePrim.DBlameLabel l, tgt))
+                       (Omega.singleton {
+                           dbf_src=BlamePrim.DBlameLabel l;
+                           dbf_tgt=tgt})
                        omegas
                    ) fdecl_labels omegas)
             ) fdecl.results OmegaSet.empty in
