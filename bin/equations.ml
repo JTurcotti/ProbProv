@@ -105,6 +105,19 @@ struct
   let add_expr e1 e2 = Add(e1, e2)
   let sub_expr e1 e2 = Sub(e1, e2)
 
+  (** ExprArith represents arithmetic over expressions *)
+  module ExprArith =
+  struct
+    type t = expr
+
+    let mult = mult_expr
+    let add = add_expr
+    let sub = sub_expr
+
+    let one = const_expr 1.
+    let zero = const_expr 0.
+  end
+
   type eqn = (var, expr) eqn_constr
 
   module EqnSet = Set(struct type t = eqn end)

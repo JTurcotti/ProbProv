@@ -110,6 +110,9 @@ module DoubleSet
     (Neg : Neg
      with type t = InnerSet.elt) =
 struct
+  module InnerSet = InnerSet
+  module OuterSet = OuterSet
+
   type elt = InnerSet.elt
   type iset = InnerSet.t
   type oset = OuterSet.t
@@ -117,7 +120,7 @@ struct
 
   let zero = OuterSet.empty
   let one = OuterSet.singleton (InnerSet.empty)
-  
+
   let singleton : elt -> oset = fun e ->
     OuterSet.singleton (InnerSet.singleton e)
 
@@ -144,7 +147,7 @@ struct
       if InnerSet.is_empty iset then "1" else
         InnerSet.fold (compose elt_repr (Printf.sprintf combine_conj)) iset "" in
     OuterSet.fold (compose iset_repr (Printf.sprintf combine_disj)) oset ""
-      
+
   (* this function ensures that no two innersets A, B remain that satisfy
      InnerSet.subset A B - it does this by removing the larger one *)
   let eliminate_subsumption (oset : oset) : oset =
@@ -155,18 +158,18 @@ struct
         (OuterSet.remove iset oset) true in
     OuterSet.filter not_subsumed oset
 
-(* goal for `slice` is to choose an atomic event a, and return b and c such that
-   the passed event can be expressed as (a ∧ b) ∨ c.
-   `build`'s job below is then to ask for this slice of some event E, and
-   replace E with (a ∧ build(b ∨ c)) ∨ (ā ∧ build(c)) (note the recursive calls).
-   (a ∧ (b ∨ c)) ∨ (ā ∧ c) is equivalent to (a ∧ b) ∨ c, but much easier to compute
-   because the components of the top disjunction are exclusive.
+  (* goal for `slice` is to choose an atomic event a, and return b and c such that
+     the passed event can be expressed as (a ∧ b) ∨ c.
+     `build`'s job below is then to ask for this slice of some event E, and
+     replace E with (a ∧ build(b ∨ c)) ∨ (ā ∧ build(c)) (note the recursive calls).
+     (a ∧ (b ∨ c)) ∨ (ā ∧ c) is equivalent to (a ∧ b) ∨ c, but much easier to compute
+     because the components of the top disjunction are exclusive.
 
-   open questions:
-   -general: is there a better way to do this?
-   -maybe independence helps?
-   
-*)
+     open questions:
+     -general: is there a better way to do this?
+     -maybe independence helps?
+
+  *)
   let slice : oset -> (elt * oset * oset) option = fun oset ->
     let union_all = OuterSet.fold InnerSet.union oset InnerSet.empty in
     let (a_opt, _) =
@@ -184,11 +187,12 @@ struct
       let b = OuterSet.map (InnerSet.remove a) b_fat in
       Some (a, b, c)
 
-  (*
+  (**
      If called on an oset representing an arbitrary DNF, `make_computable`
      will return an event-equivalent DNF in which the conjunctions are
-     guaranteed not to pairwise co-occur
-     *)
+     guaranteed not to pairwise co-occur. We call these "conjunction-coexclusive"
+     DNFs
+     **)
   let rec make_computable (oset : oset) : oset =
     if OuterSet.is_empty oset then zero else
       match slice oset with
@@ -200,19 +204,37 @@ struct
                 can introduce new subsumption (e.g. under remove a: a + b ↦ 1 + b)
                 or the union with b after the mapped removal, and it is vital that we
                 recur into as small an object as possible *)
-             (build (eliminate_subsumption (disj b c))))
+             (make_computable (eliminate_subsumption (disj b c))))
           (conj_elt (neg_elt a)
-             (build c))
+             (make_computable c))
 end
 
-module Derived (T : NegHashT) =
+module Derived (T : DepHashT) =
 struct
-  type t = {el: T.t; ind: int}
-                                  
-  let neg t = {el=T.neg t.el;ind=t.ind}
+  module D =
+  struct
+    type t = {el: T.t; ind: int; sgn: bool}
 
-  type hash_t = T.hash_t * int
-  let hash t = (T.hash t.el, t.ind)
+    let neg t = {el=t.el; ind=t.ind; sgn=not t.sgn}
+
+    module HashT = struct type t = T.hash_t * int end
+    type hash_t = HashT.t
+    let hash t = (T.hash t.el, t.ind)
+  end
+  
+  include D
+
+  (* we consider dependent events over Derived Ts to access
+     their assertion of hash-constancy before erasure
+  *)
+  module Dep = DependentEv(D)
+  module S = Set(T)
+
+  (* this can be called to lower a set of hash-constant derived events to
+     a set of the underlying events - assertion of hash-constancy is crucial*)
+  let lower_to_set : Dep.t -> S.t = fun de ->
+    let () = Dep.assert_dep de in
+    Dep.Set.fold (fun d -> S.add d.el) de S.empty
 end
 
 module DerivedDoubleSet (T : NegHashT) =
@@ -222,13 +244,84 @@ struct
 
   module DepEv = DependentEv(T)
 
-  let separate :
-    DNF.t -> Set(DepEv).t *
-             ((DepEv.t -> 'a) ->
-              
-              mult:('a -> 'a -> 'a) ->
-              add:('a -> 'a -> 'a) ->
-              sub:('a -> 'a -> 'a) ->
-              
-              'a) = _    
+  module ArithSynth (A : Arithmetic) =
+  struct
+               
+    (**
+       a synthesizer is structurally equivalent to an AST over DepEv's
+       it takes a source of A.t values for DepEv "variables", and combines
+       them according to A's operations
+    *)
+    type synthesizer =
+      (DepEv.t -> A.t) -> A.t
+    type synth = synthesizer
+
+    
+    module DepEvSet = Set(DepEv)
+        
+    (** a req_synth combines a synthesizer with its requirements for
+        successful computation *)
+    type req_synth = DepEvSet.t * synth
+
+    let synth_mult : req_synth -> req_synth -> req_synth =
+      fun (r1, s1) (r2, s2) ->
+      (DepEvSet.union r1 r2, fun provider ->
+          A.mult (s1 provider) (s2 provider))
+
+    let synth_add : req_synth -> req_synth -> req_synth =
+      fun (r1, s1) (r2, s2) ->
+      (DepEvSet.union r1 r2, fun provider ->
+          A.add (s1 provider) (s2 provider))
+
+    let synth_sub : req_synth -> req_synth -> req_synth =
+      fun (r1, s1) (r2, s2) ->
+      (DepEvSet.union r1 r2, fun provider ->
+          A.sub (s1 provider) (s2 provider))
+
+        
+        
+    let synth_one : req_synth = (DepEvSet.empty, fun _ -> A.one)
+    let synth_zero : req_synth = (DepEvSet.empty, fun _ -> A.zero)
+
+    let synth_var : DepEv.t -> req_synth = fun d ->
+      (DepEvSet.singleton d, fun provider -> provider d)
+
+    module DHashMap = Map(D.HashT)
+      
+    (** `separate` takes a DNF and expresses it as a sum, product, and difference
+        of dependent events.
+
+        It returns the list of dependent events involved in the computation,
+        and a synthesizer corresponding to the computation.
+
+        PRECONDITION: This should only be called on conjunction-coexclusive DNFs *)
+    let separate : DNF.t -> req_synth = fun dnf ->
+      (* returns a synthesizer for a dependent conjunction *)
+      let synth_dep_conj : DNF.iset -> req_synth = fun dep_conj ->
+        let _, neg_conj = DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
+        (* now each of pos and neg contain sets of Derived types constant
+             over sign and index (the former by this parition and the latter
+           by the hash-splitting below) so we can erase those components
+           and transform each to a dependent event. The correct arithmetic
+           to compute the probability of the original is the difference
+           in probabilities of the full conjunction and the negative component *)
+        let full_dep, neg_dep = lower_to_set dep_conj, lower_to_set neg_conj in
+        (* this corresponds to ℙ(AB̄) = ℙ(A) - ℙ(AB) *)
+        synth_sub (synth_var full_dep) (synth_var neg_dep) in
+      
+        (* returns a synthesizer for an arbitrary conjunction by splitting
+           it into dependent conjunctions *)
+      let separate_conj : DNF.iset -> req_synth = fun conj ->
+        let hashed_ev = DNF.InnerSet.fold (fun d hashed_ev ->
+            let hash = D.hash d in
+            DHashMap.update hash (function
+                | None -> Some (DNF.InnerSet.singleton d)
+                | Some s -> Some (DNF.InnerSet.add d s)
+              )
+          ) conj DHashMap.empty in
+        DHashMap.unital_fold
+          (fun _ dep_conj -> synth_mult (synth_dep_conj dep_conj))
+          hashed_ev synth_one in
+      DNF.OuterSet.unital_fold (compose separate_conj synth_add) dnf synth_zero
+  end
 end

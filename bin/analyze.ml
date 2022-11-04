@@ -178,12 +178,13 @@ struct
 
     module DNF = PiPhi.DNF
     type dnf = DNF.t
+
+    module PiPhiArithSynth = PiPhi.ArithSynth(EqnS.ExprArith)
                 
     let create_plan_from_dnf : dnf -> Phi.t -> plan = fun dnf phi ->
-      let dnf_computable = dnf |> make_computable in
-      let disj_request, plan_builder =
-        Refactor.separate dnf_computable in
-      let phi_request, pi_request =
+      let disj_request, synthesizer =
+        dnf |> DNF.make_computable |> PiPhiArithSynth.separate in
+      let pi_request, phi_request =
         PiPhi.DependentEvUtils.split_set disj_request in
       let eqn_plan pi_vals =
         let pi_provider pi =
@@ -193,8 +194,9 @@ struct
         let piphi_provider =
           PiPhi.DependentEvUtils.multiplex pi_provider phi_provider in
         let mult, add, sub = EqnS.mult_expr, EqnS.add_expr, EqnS.sub_expr in
-        let eqn_expr = plan_builder piphi_provider mult add sub in
-        EqnS.eqn_of phi eqn_expr
+        let eqn_expr = synthesizer piphi_provider in
+        EqnS.eqn_of phi eqn_expr in
+      (pi_request, phi_request, eqn_plan)
 
     let compute : Output.t -> plan =
       fun phi -> 

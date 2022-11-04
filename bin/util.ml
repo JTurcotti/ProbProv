@@ -5,8 +5,15 @@ module Ord (T : T) = struct
   let compare = Stdlib.compare
 end
 
-module Set (T : T) = 
-  Set.Make(Ord(T))
+module Set (T : T) =
+struct
+  include Set.Make(Ord(T))
+
+  let unital_fold reduce t unit =
+    match choose_opt t with
+    | None -> unit
+    | Some el -> fold reduce (remove el t) el
+end
 
 module Map (T : T) =
 struct
@@ -14,6 +21,12 @@ struct
 
   let from_elem_foo elems foo =
     List.fold_right (fun e -> add e (foo e)) elems empty
+
+  let unital_fold reduce t unit =
+    match choose_opt t with
+    | None -> unit
+    | Some (k, v) -> fold reduce (remove k t) (k, v)
+
 end
 
 module Union (Left : T) (Right : T) =
@@ -72,3 +85,15 @@ let compose f g x = g (f x)
 
 let unicode_bar = "\u{0305}"
 let unicode_bar_cond b = if b then "" else unicode_bar
+
+module type Arithmetic =
+sig
+  type t
+
+  val mult : t -> t -> t
+  val add : t -> t -> t
+  val sub : t -> t -> t
+    
+  val one : t
+  val zero : t
+end

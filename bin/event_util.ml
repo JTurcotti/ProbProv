@@ -20,7 +20,7 @@ sig
 end
 
 
-(** unions Neg and DepHashT *)
+(** intersects Neg and DepHashT *)
 module type NegHashT =
 sig
   include Neg
@@ -43,16 +43,18 @@ struct
   type elt = Elt.t
 
   let singleton x =
-    Map.singleton x true
+    Set.singleton x
 
   (**
-     this verifies that all events are indeed dependent (same hash)
+     this verifies that all events are indeed dependent (hash-constant)
+     If this check were relaxed, spurious queries across computation layers
+     would be made
   *)
   let verify_dep de =
-    match Map.choose_opt de with
+    match Set.choose_opt de with
     | None -> true (*empty event - vacuosly verified *)
-    | Some (x, _) -> let hash = Elt.hash x in
-      Map.for_all (fun x _ -> Elt.hash x = hash) de
+    | Some x -> let hash = Elt.hash x in
+      Set.for_all (fun x -> Elt.hash x = hash) de
 
   exception NotDependent
 
@@ -64,19 +66,15 @@ module DependentDisj (L : DepHashT) (R : DepHashT) =
 struct
   module LRDisj =
   struct
-    type t = Left of L.t * bool |
-             Right of R.t * bool
+    type t = Left of L.t |
+             Right of R.t 
                       
-    let neg = function
-      | Left (t, b) -> Left (t, not b)
-      | Right (t, b) -> Right (t, not b)
-                          
     type hash_t = HLeft of L.hash_t |
                 HRight of R.hash_t
                             
     let hash = function
-      | Left (t, _) -> HLeft (L.hash t)
-      | Right (t, _) -> HRight (R.hash t)
+      | Left t -> HLeft (L.hash t)
+      | Right t -> HRight (R.hash t)
   end
 
   include LRDisj
