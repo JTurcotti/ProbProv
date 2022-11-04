@@ -264,6 +264,8 @@ module LocalMap = Map.Make(LocalKey)
 (* this is our typing context! associating blame with local variables *)
 type context = blame LocalMap.t
 
+let context_lookup_ret (Ret(_, s)) = LocalMap.find (Local s)
+
 exception PhantomRetLookedUpByLocal of local
 
 (* context utilities *)
@@ -275,22 +277,10 @@ module Refactor =
 struct
   (* external event refactorizer *)
 
-  module AEEDNFOps =
-  struct
-    type elt = atomic_external_event
-    type t = external_event
-    let conj_pos = external_event_conj
-    let conj_neg (CallEvent(c, a, r, b)) =
-      external_event_conj (CallEvent(c, a, r, not b))
-    let disj = external_event_disj
-    let one = external_event_one
-    let zero = external_event_zero
-  end
-
-  module EERefactorizer = Refactor.Refactorizer
+  module EERefactorizer = Refactor.DoubleSet
       (AEEConjunctiveSet)
       (AEEDNFSet)
-      (AEEDNFOps)
+      (struct type t = atomic_external_event let neg (CallEvent(c, a, r, b)) = (CallEvent(c, a, r, not b)) end)
 
   let refactorize_external_event : external_event -> external_event
     = EERefactorizer.build

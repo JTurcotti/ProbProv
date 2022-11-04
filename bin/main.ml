@@ -1,3 +1,5 @@
+open Util
+
 module IO =
 struct
   let usage_msg = "eval -i <input_file> -o <output_file>"
@@ -32,11 +34,11 @@ let typechecked_prog = (Typecheck.typecheck_program program)
 let _ = print_endline (Context_repr.typechecked_program_repr
                          typechecked_prog)
 
-(* DEBUGGING
-let _ = Context_refactor.EERefactorizer.eliminate_subsumption
-let bld = Context_refactor.EERefactorizer.build
+
+(*
+let bld = Context.Refactor.EERefactorizer.build
 let slc_repr x =
-  match Context_refactor.EERefactorizer.slice x with
+  match Context.Refactor.EERefactorizer.slice x with
   | Some (a, b, c) -> Context_repr.(
       Printf.sprintf "(%s, %s, %s)"
         (aee_repr a)
@@ -57,10 +59,7 @@ let _ = Context.(
     let _ = print_endline (slc_repr ab) in
     let out = bld ab in
     print_endline (Context_repr.external_event_repr out)
-  )
-
-
-*)
+  )*)
 
 let _ = print_endline Layers.s
 
@@ -76,3 +75,32 @@ let _ = print_endline (str_map_repr (StrSystem.(solve (
          empty)
   ))))
 *)
+
+module TestDoubleSet =
+struct
+type neg_char = char * bool
+let nc_neg (c, b) = (c, not b)
+let nc_repr (c, b) = Printf.sprintf "%c%s" c (unicode_bar_cond b)
+module NC = struct type t = neg_char end
+module NCDS = Refactor.DoubleSet (Set(NC)) (Set(Set(NC)))
+    (struct type t = neg_char let neg = nc_neg end)
+
+let repr = NCDS.repr nc_repr "%s%s" "%s + %s"
+
+let single c = NCDS.singleton (c, true)
+let disj = NCDS.disj
+let conj = NCDS.conj
+let neg = NCDS.neg
+let a, b, c, d, e, f, g, h =
+  single 'a', single 'b', single 'c', single 'd', single 'e', single 'f',
+  single 'g', single 'h'
+let print x = print_endline (repr x) 
+let _ = print (disj a b)
+let test_ex =
+  (disj
+     (conj (conj (conj a b) c) d)
+     (conj (conj (conj e f) g) h)
+  )
+let _ = print test_ex
+let _ = print (neg test_ex)
+end

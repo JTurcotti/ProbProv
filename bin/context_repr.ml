@@ -1,10 +1,12 @@
 open Context
 open Expr
 open Expr_repr
+open Util
   
 let aee_repr (CallEvent(Call(Func(s), i_f), Arg(i_a, _), Ret(i_r, _), b)) =
   Printf.sprintf "ϕ%s⟨%s%s⟩ₐ%sʳ%s"
-    (if b then "" else "\u{0305}") s
+    (unicode_bar_cond b)
+    s
     (int_subscript_repr i_f)
     (int_subscript_repr i_a)
     (int_superscript_repr i_r)
@@ -25,10 +27,7 @@ let external_event_repr ext_ev =
       (AEEDNFSet.remove fst ext_ev) (aee_conj_repr fst)
 
 let aie_repr (AIE(Branch(i), dir)) =
-  if dir then
-    Printf.sprintf "π%s" (int_subscript_repr i)
-  else
-    Printf.sprintf "π\u{0305}%s" (int_subscript_repr i)
+  Printf.sprintf "π%s%s" (unicode_bar_cond dir) (int_subscript_repr i)
     
 
 let internal_event_repr int_ev =

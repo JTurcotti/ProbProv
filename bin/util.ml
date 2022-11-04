@@ -61,3 +61,9 @@ struct
       let () = x_opt := Some x in
       x
 end
+
+
+let compose f g x = g (f x)
+
+let unicode_bar = "\u{0305}"
+let unicode_bar_cond b = if b then "" else unicode_bar

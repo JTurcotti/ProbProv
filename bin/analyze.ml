@@ -6,6 +6,8 @@ module BlamePrim =
 *)
 struct
   open Expr
+      
+  type call_event = {func : func; arg : arg; ret : ret}
 
   type blame_source =
     | BlameLabel of label
@@ -17,11 +19,11 @@ struct
 
   (* these are the sites the type system identifies - they include flows from a call to a return
      through the body of a function*)
-  type blame_flow = blame_source * blame_target
+  type blame_flow = {src: blame_source; tgt: blame_target}
 
 (* these are the flows that we need to figure out using equation solving - the flow from the
    return of one function to the return of another via interprocedural calls *)
-  type blame_teleflow = blame_target * blame_target
+  type blame_teleflow = {src: blame_target; tgt: blame_target}
 
   type direct_blame_source =
     | DBlameLabel of label
@@ -29,8 +31,10 @@ struct
 
   (* these are a restricted version of the blame_flow type above - flows from calls to returns
      are not included because we used computation of the teleflows to eliminate them *)
-  type direct_blame_flow = direct_blame_source * blame_target
+  type direct_blame_flow = {src: direct_blame_source; tgt: blame_target}
 end
+
+open BlamePrim
 
 
 (*
@@ -58,7 +62,7 @@ type pi = Pi.t
 (*
     Phi is the event that a function's result depends on its argument
 *)
-module Phi = DependentEv(struct type t = Context.atomic_external_event end)
+module Phi = DependentEv(struct type t = BlamePrim.call_event end)
 module PhiMap = Map(Phi)
 module PhiSet = Set(Phi)
 type phi = Phi.t
@@ -86,6 +90,13 @@ module OmegaMap = Map(Omega)
 module OmegaSet = Set(Omega)
 type omega = Omega.t
 
+exception OptionShouldntBeNoneHere
+let force_some =
+
+  function
+  | Some x -> x
+  | None -> raise OptionShouldntBeNoneHere
+
 (*
    A ProgramAnalyzer should be initialized the the deferred computation of a
    typechecked program. It's submodule Output contains a function getProgramBlame
@@ -95,6 +106,13 @@ module ProgramAnalyzer (DeferredProg : Defer with type t = Typecheck.typechecked
 struct
   module GetProg = IdempotentDefer (DeferredProg)
   let get_program _ = match GetProg.get() with TProgram mp -> mp
+
+  let get_call_event_blame call_event =
+    let prog = get_program () in
+    let _, ctxt_opt = Expr.FuncMap.find call_event.func prog in
+    let ctxt = force_some ctxt_opt in
+    let blame = Context.context_lookup_ret call_event.ret ctxt in
+    Context.SiteMap.find (Context.ArgSite call_event.arg) blame
 
   
   module PiComputation = 
@@ -117,7 +135,18 @@ struct
 
     let compute : Output.t ->
       Set(Input).t * Set(Output).t *
-      (float Map(Input).t -> Equations.EqnSystem(Output).eqn) = ()
+      (float Map(Input).t -> Equations.EqnSystem(Output).eqn) =
+      fun depcall_event -> 
+
+      (* we have a dependent event whose components are call events
+         we need to look up the corresponding event in the program, which
+         may be a product of blames
+      *)
+
+      
+
+      
+          
   end
 
   module PhiComputationLayer = Layers.IndirectComputationLayer (Pi) (Phi)
