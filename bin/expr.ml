@@ -16,6 +16,18 @@ type branch = Branch of int
 type label = Label of int
 type call = Call of func * int
 
+
+module BranchT = struct type t = branch end
+module LabelT = struct type t = label end
+module CallT = struct type t = call end
+
+module BranchMap = Map(BranchT)
+module BranchSet = Set(BranchT)
+module LabelMap = Map(LabelT)
+module LabelSet = Set(LabelT)
+module CallMap = Map(CallT)
+module CallSet = Set(CallT)
+
 type aexp =
   | Var of local * label
   | Const of label
@@ -136,8 +148,6 @@ let label_prog raw_prog =
       ) FuncMap.empty flist)
   )
 
-module LabelSet = Set(struct type t = label end)
-
 let rec aexpr_labels : aexp -> LabelSet.t =
   function
   | Var (_, l) -> LabelSet.singleton l
@@ -163,3 +173,15 @@ let rec expr_labels : expr -> LabelSet.t =
   | Assert (_, a) -> aexpr_labels a
   | AExp a -> aexpr_labels a
                 
+let rec expr_branches : expr -> BranchSet.t =
+  function
+  | Cond (_, e1, e2, b) ->
+    BranchSet.add b (
+      BranchSet.union
+        (expr_branches e1)
+        (expr_branches e2))
+  | Seq (e1, e2) ->
+    BranchSet.union
+      (expr_branches e1)
+      (expr_branches e2)
+  | _ -> BranchSet.empty

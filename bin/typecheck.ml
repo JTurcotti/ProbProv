@@ -1,5 +1,6 @@
 open Context
 open Expr
+open Util
 
 let singleton_bind l f =
   match l with
@@ -212,3 +213,35 @@ type typechecked_program = TProgram of (fdecl * context option) FuncMap.t
 let typecheck_program (Program fdecls) : typechecked_program =
   TProgram (FuncMap.map (fun fdecl ->
       (fdecl, typecheck_fdecl (Program fdecls) fdecl)) fdecls)
+
+(**
+   this exists to abstract the process of indexing information about
+   association of objects (e.g. branches labels) with enclosing functions
+*)
+module Indexer (T : T)
+    (ExprExtract : sig val expr_extract : expr -> Set(T).t end) =
+struct
+  exception Unexpected
+  
+  module M = Map(T)
+  module S = Set(T)
+  let index : typechecked_program -> fdecl Map(T).t =
+    fun (TProgram mp) ->
+    FuncMap.fold (
+      fun _ (fdecl, _) ->
+        M.union
+          (fun _ _ _ -> raise Unexpected) (* unioned maps should be disjoint *)
+          (M.from_elem_foo
+             (S.elements (ExprExtract.expr_extract fdecl.body))
+             (fun _ -> fdecl))
+    ) mp M.empty
+end
+
+module LabelIndexer = Indexer(LabelT)
+    (struct let expr_extract = expr_labels end)
+let index_labels = LabelIndexer.index
+
+module BranchIndexer = Indexer(BranchT)
+    (struct let expr_extract = expr_branches end)
+let index_branches = BranchIndexer.index
+    

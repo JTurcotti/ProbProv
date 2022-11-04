@@ -8,8 +8,13 @@ end
 module Set (T : T) = 
   Set.Make(Ord(T))
 
-module Map (T : T) = 
-  Map.Make(Ord(T))
+module Map (T : T) =
+struct
+  include Map.Make(Ord(T))
+
+  let from_elem_foo elems foo =
+    List.fold_right (fun e -> add e (foo e)) elems empty
+end
 
 module Union (Left : T) (Right : T) =
 struct
