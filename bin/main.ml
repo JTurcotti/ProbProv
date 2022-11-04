@@ -20,14 +20,14 @@ end
 
 
 let program = IO.(try
-                 Arg.parse speclist anon_fun usage_msg;
-                 let ic = open_in !input_file in
-                 (*let oc = open_out !output_file in*)
-                 let lexbuf = Lexing.from_channel ic in
-                 let program = Parser.main Lexer.token lexbuf in
-                 Expr.label_prog program
-               with Lexer.FAIL ->
-                 exit 1)
+                    Arg.parse speclist anon_fun usage_msg;
+                    let ic = open_in !input_file in
+                    (*let oc = open_out !output_file in*)
+                    let lexbuf = Lexing.from_channel ic in
+                    let program = Parser.main Lexer.token lexbuf in
+                    Expr.label_prog program
+                  with Lexer.FAIL ->
+                    exit 1)
 
 let _ = print_endline (Expr_repr.program_string program)
 let typechecked_prog = (Typecheck.typecheck_program program)
@@ -64,43 +64,50 @@ let _ = Context.(
 let _ = print_endline Layers.s
 
 (* DEBUGGING
-module StrSystem = Equations.EqnSystem(struct type t = string end)
+   module StrSystem = Equations.EqnSystem(struct type t = string end)
 
-let str_map_repr s = StrSystem.VarMap.fold (fun s d r ->
+   let str_map_repr s = StrSystem.VarMap.fold (fun s d r ->
     Printf.sprintf "%s:%f, %s" s d r) s ""
 
-let _ = print_endline (str_map_repr (StrSystem.(solve (
+   let _ = print_endline (str_map_repr (StrSystem.(solve (
     add (Eqn ("x", (Mult (Var "y" , Var "y"))))
       (add (Eqn ("y", (Add (Var "x" , Const 0.25))))
          empty)
-  ))))
+   ))))
 *)
 
 module TestDoubleSet =
 struct
-type neg_char = char * bool
-let nc_neg (c, b) = (c, not b)
-let nc_repr (c, b) = Printf.sprintf "%c%s" c (unicode_bar_cond b)
-module NC = struct type t = neg_char end
-module NCDS = Refactor.DoubleSet (Set(NC)) (Set(Set(NC)))
-    (struct type t = neg_char let neg = nc_neg end)
+  let run_tests = false
 
-let repr = NCDS.repr nc_repr "%s%s" "%s + %s"
+  type neg_char = char * bool
+  let nc_neg (c, b) = (c, not b)
+  let nc_repr (c, b) = Printf.sprintf "%c%s" c (unicode_bar_cond b)
+  module NC = struct type t = neg_char end
+  module NCDS = Refactor.DoubleSet (Set(NC)) (Set(Set(NC)))
+      (struct type t = neg_char let neg = nc_neg end)
 
-let single c = NCDS.singleton (c, true)
-let disj = NCDS.disj
-let conj = NCDS.conj
-let neg = NCDS.neg
-let a, b, c, d, e, f, g, h =
-  single 'a', single 'b', single 'c', single 'd', single 'e', single 'f',
-  single 'g', single 'h'
-let print x = print_endline (repr x) 
-let _ = print (disj a b)
-let test_ex =
-  (disj
-     (conj (conj (conj a b) c) d)
-     (conj (conj (conj e f) g) h)
-  )
-let _ = print test_ex
-let _ = print (neg test_ex)
+  let repr = NCDS.repr nc_repr "%s%s" "%s + %s"
+
+  let single c = NCDS.singleton (c, true)
+  let disj = NCDS.disj
+  let conj = NCDS.conj
+  let neg = NCDS.neg
+
+  let () =
+    if not run_tests then () else (
+      let a, b, c, d, e, f, g, h =
+        single 'a', single 'b', single 'c', single 'd', single 'e', single 'f',
+        single 'g', single 'h' in
+      let print x = print_endline (repr x) in
+      let _ = print (disj a b) in
+      let test_ex =
+        (disj
+           (conj (conj (conj a b) c) d)
+           (conj (conj (conj e f) g) h)
+        ) in
+      let _ = print test_ex in
+      let _ = print (neg test_ex) in
+      ()
+    )
 end

@@ -67,6 +67,7 @@ sig
   val var_expr : var -> expr
   val mult_expr : expr -> expr -> expr
   val add_expr : expr -> expr -> expr
+  val sub_expr : expr -> expr -> expr
 
   val eqn_of : var -> expr -> eqn
 
@@ -81,6 +82,7 @@ type 'var expr_constr =
     | Var of 'var
     | Mult of 'var expr_constr * 'var expr_constr
     | Add of 'var expr_constr * 'var expr_constr
+    | Sub of 'var expr_constr * 'var expr_constr
     
 type ('var, 'expr) eqn_constr =
   | Eqn of 'var * 'expr
@@ -101,6 +103,7 @@ struct
   let var_expr v = Var(v)
   let mult_expr e1 e2 = Mult(e1, e2)
   let add_expr e1 e2 = Add(e1, e2)
+  let sub_expr e1 e2 = Sub(e1, e2)
 
   type eqn = (var, expr) eqn_constr
 
@@ -118,7 +121,8 @@ struct
       | Const _ -> VarSet.empty
       | Var v -> VarSet.singleton v
       | Mult(e1, e2) 
-      | Add(e1, e2) -> VarSet.union (vars_of_expr e1) (vars_of_expr e2) in
+      | Add(e1, e2) 
+      | Sub(e1, e2) -> VarSet.union (vars_of_expr e1) (vars_of_expr e2) in
     function
     | Eqn(v, e) -> VarSet.add v (vars_of_expr e)
 
@@ -180,7 +184,9 @@ struct
       | Mult(e1, e2) ->
         Printf.sprintf "(%s * %s)" (expr_repr e1) (expr_repr e2)
       | Add(e1, e2) ->
-        Printf.sprintf "(%s + %s)" (expr_repr e1) (expr_repr e2) in
+        Printf.sprintf "(%s + %s)" (expr_repr e1) (expr_repr e2)
+      | Sub(e1, e2) ->
+        Printf.sprintf "(%s - %s)" (expr_repr e1) (expr_repr e2) in
     let eqn_repr = function
       | Eqn(v, e) -> Printf.sprintf "x(%d) - (%s)" (var_i v) (expr_repr e) in
     let eqns_repr = EqnSet.fold (fun eqn repr ->

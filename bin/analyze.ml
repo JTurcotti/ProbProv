@@ -1,4 +1,5 @@
 open Util
+open Event_util
 
 module BlamePrim =
 (**
@@ -38,47 +39,6 @@ end
 
 open BlamePrim
 
-(**
-   This represents a type t that comes with a hash.
-   The hash should represent indendence classes:
-   two events of type t are independent iff their hashs differ
-*)
-module type DepHashT =
-sig
-  type t
-  type hash_t
-  val hash : t -> hash_t
-end
-
-(**
-   this is used to model a conjunction of events and their inverse
-   in practice, for effeciency, should only be used for dependent events
-*)
-module DependentEv(T : DepHashT) =
-struct
-  module Map = Map(T)
-
-  type t = bool Map.t
-  type elt = T.t
-
-  let singleton x =
-    Map.singleton x true
-
-  (**
-     this verifies that all events are indeed dependent (same hash)
-  *)
-  let verify_dep de =
-    match Map.choose_opt de with
-    | None -> true (*empty event - vacuosly verified *)
-    | Some (x, _) -> let hash = T.hash x in
-      Map.for_all (fun x _ -> T.hash x = hash) de
-
-  exception NotDependent
-
-  let assert_dep de =
-    if verify_dep de then () else raise NotDependent
-end
-
 exception OptionShouldntBeNoneHere
 let force_some =
 
@@ -109,7 +69,7 @@ struct
       let get _ = Typecheck.index_branches (GetProg.get())
     end)
 
-  let get_call_event_blame call_event =
+  let get_call_event_blame : call_event -> Context.event = fun call_event ->
     let prog = get_program () in
     let _, ctxt_opt = Expr.FuncMap.find call_event.ce_func prog in
     let ctxt = force_some ctxt_opt in
@@ -176,6 +136,26 @@ struct
   type omega = Omega.t
 
 
+  module PiPhi =
+  struct
+    module T = DependentDisj (Pi.Elt) (Phi.Elt)
+    include Refactor.DerivedDoubleSet(T)
+
+    open Context
+
+    let of_aee : atomic_external_event -> DNF.t = _
+
+    let of_aee_conj : aee_conjunction -> DNF.t = _
+    
+    let of_external_event : external_event -> DNF.t = _
+
+    let of_internal_event : internal_event -> DNF.t = _
+
+    let of_event : event -> DNF.t = _
+
+    include T
+  end
+  
   module PiComputation = 
   struct
     module Output = Pi
@@ -189,33 +169,48 @@ struct
     module Input = Pi
     module Output = Phi
 
-    module InputSet = Set(Pi)
-    module OutputSet = Set(Phi)
-
-    module Eqns = Equations.EqnSystem(Phi)
+    module EqnS = Equations.EqnSystem(Phi)    
 
     (* this is what we aim to compute*)
-    type plan = Set(Input).t *
-                Set(Output).t *
-                (float Map(Input).t -> Equations.EqnSystem(Output).eqn)
+    type plan = PiSet.t *
+                PhiSet.t *
+                (float PiMap.t -> Equations.EqnSystem(Output).eqn)
+
+    module DNF = PiPhi.DNF
+    type dnf = DNF.t
                 
-    let compute_event : Context.event -> plan = ()
+    let create_plan_from_dnf : dnf -> Phi.t -> plan = fun dnf phi ->
+      let dnf_computable = dnf |> make_computable in
+      let disj_request, plan_builder =
+        Refactor.separate dnf_computable in
+      let phi_request, pi_request =
+        PiPhi.DependentEvUtils.split_set disj_request in
+      let eqn_plan pi_vals =
+        let pi_provider pi =
+          EqnS.const_expr (PiMap.find pi pi_vals) in
+        let phi_provider phi =
+          EqnS.var_expr phi in
+        let piphi_provider =
+          PiPhi.DependentEvUtils.multiplex pi_provider phi_provider in
+        let mult, add, sub = EqnS.mult_expr, EqnS.add_expr, EqnS.sub_expr in
+        let eqn_expr = plan_builder piphi_provider mult add sub in
+        EqnS.eqn_of phi eqn_expr
 
     let compute : Output.t -> plan =
-      fun dep_call_event -> 
+      fun phi -> 
 
       (* assert that the passed event is actually dependent *)
-      let () = Phi.assert_dep dep_call_event in
+      let () = Phi.assert_dep phi in
 
       (* we have a dependent event whose components are call events
          we need to look up the corresponding event in the program, which
          may be a product of blames
       *)
+      let dnf = Phi.Set.fold (fun call_event ->
+          call_event |> get_call_event_blame |> DNF.of_event |> DNF.conj)
+          phi DNF.one in
       
-
-
-
-
+      create_plan_from_dnf dnf
   end
 
   module PhiComputationLayer = Layers.IndirectComputationLayer (Pi) (Phi)

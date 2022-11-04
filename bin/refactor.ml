@@ -1,4 +1,5 @@
 open Util
+open Event_util
 
 module type SetLike =
 sig
@@ -30,6 +31,7 @@ sig
   val subset: t -> t -> bool
 end
 
+(*
 module type EventLike =
 sig
   type t
@@ -97,12 +99,7 @@ struct
     | Neg(t) -> neg t
     | One -> one
 end
-
-module type Neg =
-sig
-  type t
-  val neg : t -> t
-end
+*)
 
 (*
    A DoubleSet gives DNF semantics to two nested set modules
@@ -116,6 +113,7 @@ struct
   type elt = InnerSet.elt
   type iset = InnerSet.t
   type oset = OuterSet.t
+  type t = oset
 
   let zero = OuterSet.empty
   let one = OuterSet.singleton (InnerSet.empty)
@@ -162,7 +160,12 @@ struct
    `build`'s job below is then to ask for this slice of some event E, and
    replace E with (a ∧ build(b ∨ c)) ∨ (ā ∧ build(c)) (note the recursive calls).
    (a ∧ (b ∨ c)) ∨ (ā ∧ c) is equivalent to (a ∧ b) ∨ c, but much easier to compute
-   because the components of the top disjunction are exclusive. 
+   because the components of the top disjunction are exclusive.
+
+   open questions:
+   -general: is there a better way to do this?
+   -maybe independence helps?
+   
 *)
   let slice : oset -> (elt * oset * oset) option = fun oset ->
     let union_all = OuterSet.fold InnerSet.union oset InnerSet.empty in
@@ -181,7 +184,12 @@ struct
       let b = OuterSet.map (InnerSet.remove a) b_fat in
       Some (a, b, c)
 
-  let rec build (oset : oset) : oset =
+  (*
+     If called on an oset representing an arbitrary DNF, `make_computable`
+     will return an event-equivalent DNF in which the conjunctions are
+     guaranteed not to pairwise co-occur
+     *)
+  let rec make_computable (oset : oset) : oset =
     if OuterSet.is_empty oset then zero else
       match slice oset with
       | None -> one
@@ -195,4 +203,32 @@ struct
              (build (eliminate_subsumption (disj b c))))
           (conj_elt (neg_elt a)
              (build c))
+end
+
+module Derived (T : NegHashT) =
+struct
+  type t = {el: T.t; ind: int}
+                                  
+  let neg t = {el=T.neg t.el;ind=t.ind}
+
+  type hash_t = T.hash_t * int
+  let hash t = (T.hash t.el, t.ind)
+end
+
+module DerivedDoubleSet (T : NegHashT) =
+struct
+  module D = Derived(T)
+  module DNF = DoubleSet (Set(D)) (Set(Set(D))) (D)
+
+  module DepEv = DependentEv(T)
+
+  let separate :
+    DNF.t -> Set(DepEv).t *
+             ((DepEv.t -> 'a) ->
+              
+              mult:('a -> 'a -> 'a) ->
+              add:('a -> 'a -> 'a) ->
+              sub:('a -> 'a -> 'a) ->
+              
+              'a) = _    
 end
