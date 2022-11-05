@@ -289,7 +289,7 @@ struct
 
     module DNF = PiPhi.DNF
 
-    let compute : Output.t -> PiPhi.Indirect.equation_derivation =
+    let compute : Phi.t -> PiPhi.Indirect.equation_derivation =
       fun phi -> 
 
       (* assert that the passed event is actually dependent *)
@@ -341,10 +341,13 @@ struct
 
   module BetaEta =
   struct
-    module T = DependentDisj (Beta.Elt) (Eta.Elt)
-    include Refactor.DerivedDoubleSet(T)
+    include DisjunctiveWorkhorse (Beta.Elt) (Eta.Elt)
 
-    include T
+    (* express a teleflow as a DNF of beta and eta *)
+    let teleflow_event : blame_teleflow -> DNF.t = _
+
+    (* expresses a direct blame flow (omega) as a DNF of beta and eta *)
+    let interprocedural_event : direct_blame_flow -> DNF.t = _
   end
 
   module EtaComputation =
@@ -352,10 +355,18 @@ struct
     module Input = Beta
     module Output = Eta
 
+    module DNF = BetaEta.DNF
+    
+    let compute : Eta.t -> BetaEta.Indirect.equation_derivation =
+      fun eta ->
 
-    let compute : Output.t ->
-      Set(Input).t * Set(Output).t *
-      (float Map(Input).t -> Equations.EqnSystem(Output).eqn) = ()
+      let () = Eta.assert_dep eta in
+
+      let dnf = Eta.Set.fold (fun blame_teleflow ->
+          blame_teleflow |> BetaEta.teleflow_event |> DNF.conj)
+          eta DNF.one in
+
+      BetaEta.Indirect.derive_sequel_equation eta dnf
   end
 
   module EtaComputationLayer =
@@ -364,17 +375,32 @@ struct
 
   module OmegaComputation =
   struct
-    module Input = Eta
+    module Input = Union(Beta)(Eta)
     module Output = Omega
 
-    module InputSet = Set(Eta)
+    module BetaEtaSet = Set(Input)
+    module BetaEtaMap = Map(Input)
 
-    let compute _ = InputSet.empty, (fun _ -> 0.)
+    module DNF = BetaEta.DNF
+
+    let compute : Omega.t -> BetaEtaSet.t * (float BetaEtaMap.t -> float) =
+      fun omega ->
+
+      let () = Omega.assert_dep omega in
+
+      let dnf = Omega.Set.fold (fun direct_blame_flow ->
+          direct_blame_flow |> interprocedural_event |> DNF.conj)
+          omega DNF.one in
+
+      BetaEta.Direct.derive_float dnf
   end
 
+  module BetaEtaAggregator =
+    Layers.AggregatorLayer (Beta) (Eta)
+      (BetaComputationLayer) (EtaComputationLayer)
   module OmegaComputationLayer =
-    Layers.DirectComputationLayer (Eta) (Omega)
-      (EtaComputationLayer) (OmegaComputation)
+    Layers.DirectComputationLayer (Union(Beta)(Eta)) (Omega)
+      (BetaEtaAggregator) (OmegaComputation)
 
   module Output = struct
     type programOmegas = POmegas of float OmegaMap.t
