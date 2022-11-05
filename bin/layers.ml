@@ -108,6 +108,7 @@ sig
 end
 
 module IndirectComputationLayer
+    (Name : sig val name : string end)
     (Input : T)
     (Output : T)
     (PredLayer : ComputationLayer 
@@ -179,7 +180,7 @@ struct
 
     (* return a mapping containing only the originally requested outputs *)
     OutputMap.filter (fun output_req _ ->
-        OutputSet.mem output_req output_request) eqn_solve_result
+        OutputSet.mem output_req output_request) (eqn_solve_result Name.name)
 end
 
 module AggregatorLayer

@@ -329,7 +329,9 @@ struct
       PiPhi.Indirect.derive_sequel_equation phi dnf
   end
 
-  module PhiComputationLayer = Layers.IndirectComputationLayer (Pi) (Phi)
+  module PhiComputationLayer = Layers.IndirectComputationLayer
+      (struct let name = "phi_computation" end)
+      (Pi) (Phi)
       (PiComputationLayer) (PhiComputation)
 
   module BetaComputation =
@@ -510,7 +512,9 @@ struct
   end
 
   module EtaComputationLayer =
-    Layers.IndirectComputationLayer (Beta) (Eta)
+    Layers.IndirectComputationLayer
+      (struct let name = "eta_computation" end)
+      (Beta) (Eta)
       (BetaComputationLayer) (EtaComputation)
 
   module OmegaComputation =

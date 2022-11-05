@@ -42,12 +42,13 @@ fprintf('%s');|}
 
     n_vars eqns_repr start_token sol_fmt mid_token val_fmt end_token
 
-let output_scriptname = "ocaml_matlab_eqn"
-let output_filename = Printf.sprintf "%s.m" output_scriptname
-let result_filename = "ocaml_matlab_eqn_out"
+let output_scriptname name = "ocaml_matlab_eqn__" ^ name
+let output_filename name = Printf.sprintf "%s.m" (output_scriptname name)
+let result_filename name = "ocaml_matlab_eqn_out__" ^ name
 
-let matlab_runcmd = Printf.sprintf
-    {|matlab -nojvm -batch "%s" > %s|} output_scriptname result_filename
+let matlab_runcmd name = Printf.sprintf
+    {|matlab -nojvm -batch "%s" > %s|}
+    (output_scriptname name) (result_filename name)
 
 (*
 An EqnSolver allows you to build up a system of equations over
@@ -147,17 +148,17 @@ struct
   (* given a list of matlab equations referring to variables
      x(1), x(2), ..., x(n_vars), solve it with matlab and store
      the result to the file result_filename *)
-  let exec_matlab_solve (n_vars : int) (eqns_repr : string) : int =
+  let exec_matlab_solve (n_vars : int) (eqns_repr : string) (name : string) : int =
     let matlab_prog_text = matlab_prog_fmt n_vars eqns_repr in
-    let oc = open_out output_filename in
+    let oc = open_out (output_filename name) in
     let () = Printf.fprintf oc "%s" matlab_prog_text in
     let () = close_out oc in
-    Sys.command matlab_runcmd
+    Sys.command (matlab_runcmd name)
       
   (* read a matlab output file as a list of floats,
      can throw Sys_error  *)
-  let read_matlab_result i_var : float varMap =
-    let ic = open_in result_filename in
+  let read_matlab_result i_var (name : string) : float varMap =
+    let ic = open_in (result_filename name) in
     (*skip over everything through start line *)
     let input_or_syserr s = try input_line ic with
         End_of_file -> raise (Sys_error s) in
@@ -182,8 +183,13 @@ struct
     sols
       
   exception SolveFailure of string
-  
-  let solve (Sys(vars, eqns)) : float varMap = 
+
+  (** given a system set up with the equations eqns and the variables vars
+      (though theoretically vars could be computed from eqns), solve it!
+      takes a name to associate with the intermediate files of the
+      computation for debugging's sake.
+  *)
+  let solve (Sys(vars, eqns)) (name : string) : float varMap = 
     let n_vars = VarSet.cardinal vars in
     let vars_list = VarSet.elements vars in
     let vars_index, _ = List.fold_left (fun (mp, i) var ->
@@ -205,10 +211,10 @@ struct
     let eqns_repr = EqnSet.fold (fun eqn repr ->
         Printf.sprintf "%s, %s" (eqn_repr eqn) repr) eqns "" in
     try
-      let out_code = exec_matlab_solve n_vars eqns_repr in
+      let out_code = exec_matlab_solve n_vars eqns_repr name in
       let () = if out_code <> 0 then
           raise (Sys_error "matlab call failed") else ()  in
-      read_matlab_result i_var
+      read_matlab_result i_var name
     with Sys_error s ->
       raise (SolveFailure s)
 end
