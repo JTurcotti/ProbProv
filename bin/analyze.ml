@@ -155,7 +155,7 @@ struct
   struct
     module Original = DependentEv(OriginalElt)
     module Sequel = DependentEv(SequelElt)
-    
+
     module T = DependentDisj (OriginalElt) (SequelElt)
     include T
     include Refactor.DerivedDoubleSet(T)           
@@ -168,15 +168,14 @@ struct
 
     module Indirect =
     struct
-
       module SequelEqnSystem = Equations.EqnSystem(Sequel)
 
       module ExprArithSynth = ArithSynth(SequelEqnSystem.ExprArith)
 
       type equation_derivation =
-             OriginalSet.t *
-             SequelSet.t *
-             (float OriginalMap.t -> SequelEqnSystem.eqn)
+        OriginalSet.t *
+        SequelSet.t *
+        (float OriginalMap.t -> SequelEqnSystem.eqn)
 
       let derive_sequel_equation : Sequel.t -> DNF.t -> equation_derivation =
         fun seq dnf_for_seq ->
@@ -184,17 +183,40 @@ struct
           ExprArithSynth.dnf_to_req_synth dnf_for_seq in
         let orig_request, seq_request =
           DependentEvUtils.split_set disj_request in
-        let eqn_derivation orig_vals =
-          let orig_provider orig =
-            SequelEqnSystem.const_expr (OriginalMap.find orig orig_vals) in
-          let seq_provider seq =
-            SequelEqnSystem.var_expr seq in
-          let orig_seq_disj_provider =
-            DependentEvUtils.multiplex orig_provider seq_provider in
-          let seq_eqn_expr =
-            synthesizer orig_seq_disj_provider in
-          SequelEqnSystem.eqn_of seq seq_eqn_expr in
+        let eqn_derivation : (float OriginalMap.t -> SequelEqnSystem.eqn) =
+          fun orig_vals ->
+            let orig_provider orig =
+              SequelEqnSystem.const_expr (OriginalMap.find orig orig_vals) in
+            let seq_provider seq =
+              SequelEqnSystem.var_expr seq in
+            let orig_seq_disj_provider =
+              DependentEvUtils.multiplex orig_provider seq_provider in
+            let seq_eqn_expr =
+              synthesizer orig_seq_disj_provider in
+            SequelEqnSystem.eqn_of seq seq_eqn_expr in
         (orig_request, seq_request, eqn_derivation)
+    end
+
+    module Direct =
+    struct
+      module OriginalSequelUnion = Union (Original) (Sequel)
+      module UnionSet = Set(OriginalSequelUnion)
+      module UnionMap = Map(OriginalSequelUnion)
+
+      module FloatArithSynth = ArithSynth(FloatArithmetic)
+
+      type float_derivation =
+        UnionSet.t *
+        (float UnionMap.t -> float)
+
+      let derive_float : DNF.t -> float_derivation = fun dnf ->
+        let disj_request, synthesize =
+          FloatArithSynth.dnf_to_req_synth dnf in
+        let union_request = DependentEvUtils.resolve_set disj_request in
+        let derivation : float UnionMap.t -> float =
+          fun orig_seq_vals ->
+            synthesize (DependentEvUtils.provide_from_union_map orig_seq_vals) in
+        (union_request, derivation)
     end
   end
 
@@ -297,8 +319,6 @@ struct
 
     module DNF = PiPhi.DNF
 
-    module PiPhiFloatSynth = PiPhi.ArithSynth(FloatArithmetic)
-
     let compute : Beta.t -> PiPhiSet.t * (float PiPhiMap.t -> float) =
       fun beta ->
 
@@ -309,11 +329,7 @@ struct
           blame_flow |> get_intraprocedural_blame |> PiPhi.of_event |> DNF.conj)
           beta DNF.one in
 
-      let disj_request, synth = PiPhiFloatSynth.dnf_to_req_synth dnf in
-      let union_request = PiPhi.DependentEvUtils.resolve_set disj_request in
-      let plan : float PiPhiMap.t -> float = fun pi_phi_results ->
-        synth (PiPhi.DependentEvUtils.provide_from_union_map pi_phi_results) in
-      (union_request, plan)
+      PiPhi.Direct.derive_float dnf
   end
 
   module PiPhiAggregator =
