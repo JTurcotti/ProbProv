@@ -85,11 +85,19 @@ struct
       | BlameCall(c, r) -> CallSite(c, r)
       | BlameArg(_, a) -> ArgSite(a)
     )
-
+  
   let get_intraprocedural_blame : blame_flow -> Context.event = fun blame_flow ->
     let blame = get_event_for_func_ret
         blame_flow.bf_tgt.bt_func blame_flow.bf_tgt.bt_ret in
     Context.SiteMap.find (blame_source_as_site blame_flow.bf_src) blame
+
+  let get_intrafunc_callsites : blame_target -> (Expr.call * Expr.ret) list = fun tgt ->
+    let blame = get_event_for_func_ret tgt.bt_func tgt.bt_ret in
+    Context.SiteMap.fold (fun site _ mp ->
+        match site with
+        | Context.CallSite(call, ret) -> ((call, ret) :: mp)
+        | _ -> mp
+    ) blame []
 
   (*
    Pi is the event that a branch is taken
@@ -343,8 +351,31 @@ struct
   struct
     include DisjunctiveWorkhorse (Beta.Elt) (Eta.Elt)
 
+    let of_beta : int -> blame_flow -> DNF.t = _
+
+    let of_eta : int -> blame_teleflow -> DNF.t = _
+
     (* express a teleflow as a DNF of beta and eta *)
-    let teleflow_event : blame_teleflow -> DNF.t = _
+    let teleflow_event : blame_teleflow -> DNF.t =
+      fun teleflow ->
+      if teleflow.bt_src = teleflow.bt_tgt then DNF.one else
+        List.fold_right (
+          fun (Expr.Call(func, ind), ret) ->
+            let intermediate_tgt = {
+              bt_func=func;
+              bt_ret=ret} in
+            DNF.disj (
+              DNF.conj
+                (of_eta ind {
+                    bt_src=teleflow.bt_src;
+                    bt_tgt=intermediate_tgt
+                  })
+                (of_beta 0 {
+                    bf_src=BlameCall(Expr.Call(func, ind), ret);
+                    bf_tgt=teleflow.bt_tgt
+                  })
+            )) (get_intrafunc_callsites teleflow.bt_tgt) DNF.one
+            
 
     (* expresses a direct blame flow (omega) as a DNF of beta and eta *)
     let interprocedural_event : direct_blame_flow -> DNF.t = _
@@ -389,12 +420,17 @@ struct
       let () = Omega.assert_dep omega in
 
       let dnf = Omega.Set.fold (fun direct_blame_flow ->
-          direct_blame_flow |> interprocedural_event |> DNF.conj)
+          direct_blame_flow |> BetaEta.interprocedural_event |> DNF.conj)
           omega DNF.one in
 
       BetaEta.Direct.derive_float dnf
   end
 
+  (* TODO TODO TODO
+     This will result in two distinct calls to the Beta layer!
+     that's really bad and expensive!
+     incorporate memoization
+  *)
   module BetaEtaAggregator =
     Layers.AggregatorLayer (Beta) (Eta)
       (BetaComputationLayer) (EtaComputationLayer)
