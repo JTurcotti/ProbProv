@@ -84,13 +84,14 @@ let label_prog raw_prog =
           | f' :: t' -> f'.raw_name = f || is_in_list t' in
         is_in_list flist
       in
+      (* each counter begins at 1 to reserve 0 as a special value *)
       (* we use this to ensure each branch gets a distinct index *)
-      let branch_counter = ref 0 in
+      let branch_counter = ref 1 in
       (* we use this to ensure each line gets a distinct label *)
-      let label_counter = ref 0 in
+      let label_counter = ref 1 in
       (* we use this to ensure each call to the same function
          gets a distinct index *)
-      let call_counter = ref 0 in
+      let call_counter = ref 1 in
       let inc_counter wrap_i c _ =
         let () = c := !c + 1 in
         wrap_i (!c - 1) in

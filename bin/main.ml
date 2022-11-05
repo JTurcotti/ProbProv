@@ -38,6 +38,7 @@ module PA = Analyze.ProgramAnalyzer (struct
     type t = Typecheck.typechecked_program
     let get _ = typechecked_prog
   end)
+let _ = PA.Output.getProgramBlame (fun _ -> true)
   
 
 (*

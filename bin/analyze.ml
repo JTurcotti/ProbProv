@@ -63,11 +63,17 @@ struct
       let get _ = Typecheck.index_labels (GetProg.get())
     end)
 
+  let lookup_label_fdecl l =
+    Expr.LabelMap.find l (LabelsIndex.get())
+
   (** gives an index of program branches on demand *)
   module BranchesIndex = IdempotentDefer (struct
       type t = Expr.fdecl Expr.BranchMap.t
       let get _ = Typecheck.index_branches (GetProg.get())
     end)
+
+  let lookup_branch_fdecl br =
+    Expr.BranchMap.find br (BranchesIndex.get())
 
   let get_event_for_func_ret : Expr.func -> Expr.ret -> Context.blame =
     fun func ret ->
@@ -97,7 +103,16 @@ struct
         match site with
         | Context.CallSite(call, ret) -> ((call, ret) :: mp)
         | _ -> mp
-    ) blame []
+      ) blame []
+
+  module BTSet = Set(struct type t = blame_target end)
+
+  let get_label_reachable_rets : Expr.label -> BTSet.t = fun l ->
+    let enclosing_func = lookup_label_fdecl l in
+    List.fold_right (fun ret -> BTSet.add {
+        bt_func=enclosing_func.name;
+        bt_ret=ret
+      }) enclosing_func.results BTSet.empty
 
   (*
    Pi is the event that a branch is taken
@@ -105,7 +120,7 @@ struct
   module Pi = DependentEv(struct
       type t = Expr.branch
       type hash_t = Expr.func
-      let hash br = (Expr.BranchMap.find br (BranchesIndex.get())).name
+      let hash br = (lookup_branch_fdecl br).name
     end)
   module PiMap = Map(Pi)
   module PiSet = Set(Pi)
@@ -351,21 +366,46 @@ struct
   struct
     include DisjunctiveWorkhorse (Beta.Elt) (Eta.Elt)
 
-    let of_beta : int -> blame_flow -> DNF.t = _
+    let of_beta : int -> blame_flow -> DNF.t =
+      fun ind flow ->
+      let disj_event = T.Left flow in
+      let derived_event = {
+        D.el=disj_event;
+        D.ind=ind;
+        D.sgn=true
+      } in
+      DNF.singleton derived_event
 
-    let of_eta : int -> blame_teleflow -> DNF.t = _
+    let of_eta : int -> blame_teleflow -> DNF.t =
+      fun ind flow ->
+      let disj_event = T.Right flow in
+      let derived_event = {
+        D.el=disj_event;
+        D.ind = ind;
+        D.sgn=true
+      } in
+      DNF.singleton derived_event
 
-    (* express a teleflow as a DNF of beta and eta *)
-    let teleflow_event : blame_teleflow -> DNF.t =
-      fun teleflow ->
+    let teleflow_computation : (int -> (DNF.t -> DNF.t)) ->
+      blame_teleflow -> DNF.t =
+      (* ind_transformer is included to make this computation more general.
+         for specific computation of teleflow events it is constantly the
+         identity function, but for computation of larger flows such as
+         full interprocedural events below other values are used *)
+      fun ind_transformer teleflow ->
+      (* this computation bakes in a formula -
+         both the correctness of that formula and the correctness of its
+         implementation are vital to the correctness of the analysis.
+         The most sensitive component is the correct assignment of
+         indendence *)
       if teleflow.bt_src = teleflow.bt_tgt then DNF.one else
         List.fold_right (
           fun (Expr.Call(func, ind), ret) ->
             let intermediate_tgt = {
               bt_func=func;
               bt_ret=ret} in
-            DNF.disj (
-              DNF.conj
+            DNF.disj (ind_transformer ind (
+                DNF.conj
                 (of_eta ind {
                     bt_src=teleflow.bt_src;
                     bt_tgt=intermediate_tgt
@@ -374,11 +414,80 @@ struct
                     bf_src=BlameCall(Expr.Call(func, ind), ret);
                     bf_tgt=teleflow.bt_tgt
                   })
-            )) (get_intrafunc_callsites teleflow.bt_tgt) DNF.one
+            ))) (get_intrafunc_callsites teleflow.bt_tgt) DNF.one
+      
+
+    (* express a teleflow as a DNF of beta and eta *)
+    let teleflow_event : blame_teleflow -> DNF.t =
+      teleflow_computation (fun _ dnf -> dnf)
             
 
     (* expresses a direct blame flow (omega) as a DNF of beta and eta *)
-    let interprocedural_event : direct_blame_flow -> DNF.t = _
+    let interprocedural_event : direct_blame_flow -> DNF.t =
+      fun direct_flow ->
+      let blame_target = direct_flow.dbf_tgt in
+      match direct_flow.dbf_src with
+      | DBlameArg(f, a) -> (
+          (* in the case that we requested a flow from an arg
+             to a return in a different function, return zero:
+             no such flow *)
+          if f <> blame_target.bt_func then DNF.zero else
+            (* otherwise this is a simple intraprocedural flow *)
+            of_beta 0 {
+              bf_src=BlameArg(f, a);
+              bf_tgt=blame_target;
+            }
+        )
+      | DBlameLabel l -> (
+          let src_func = (lookup_label_fdecl l).name in
+          let tgt_func = blame_target.bt_func in
+          let intraprocedural_flow =
+            if src_func = tgt_func then
+              (* we let the derivation index be 0 here to depend on
+                 the top-level betas computed in interprocedural flow *)
+              of_beta 0 {
+                bf_src=BlameLabel l;
+                bf_tgt=blame_target
+              } else
+              (* otherwise there is no relevant strictly intraprocedural flow *)
+              DNF.zero in
+          let interprocedural_flow = (
+            let interprocedural_flow_g : blame_target -> DNF.t =
+              fun g_blame_target ->
+                let teleflow = {
+                  bt_src=g_blame_target;
+                  bt_tgt=blame_target
+                } in
+                teleflow_computation (fun ind -> DNF.conj (
+                    (* arguably, the choice to insert
+                       derivation by the index ind here
+                       is the most surprising part of the
+                       whole formula.
+
+                       That ind will match the clause of the
+                       teleflow being computed by teleflow_computation
+                       that corresponds to a call through callsite
+                       with index ind in the body of our overall
+                       target function.
+
+                       The stack will contain a unique set of call when rooted
+                       at each of those callsites, so blame events
+                       that appear identical but come from stacks rooted
+                       at distinct callsites should be independent.
+                       We set the beta to be derived by the index of
+                       the callsite exactly to achieve that independence *)
+                    of_beta ind {
+                      bf_src=BlameLabel l;
+                      bf_tgt=g_blame_target
+                    }
+                  )) teleflow in
+            BTSet.map_reduce
+              interprocedural_flow_g
+              DNF.disj DNF.zero
+              (get_label_reachable_rets l)
+          ) in
+          DNF.disj intraprocedural_flow interprocedural_flow
+        )
   end
 
   module EtaComputation =
