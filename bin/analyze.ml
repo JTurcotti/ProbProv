@@ -143,15 +143,50 @@ struct
 
     open Context
 
-    let of_aee : atomic_external_event -> DNF.t = _
+    exception BadPhi
 
-    let of_aee_conj : aee_conjunction -> DNF.t = _
+    let of_aee : atomic_external_event -> DNF.t =
+      fun (CallEvent(Call(func, ind), arg, ret, sign)) ->
+      if not sign then raise BadPhi else
+        let call_event = {
+            ce_func=func;
+            ce_arg=arg;
+            ce_ret=ret
+          } in
+        let disj_event = T.Right call_event in
+        let derived_event = {
+          D.el=disj_event;
+          D.ind=ind;
+          D.sgn=true
+        } in
+        DNF.singleton derived_event
+
+    let of_aee_conj : aee_conjunction -> DNF.t =
+      AEEConjunctiveSet.map_reduce
+        of_aee DNF.conj DNF.one
     
-    let of_external_event : external_event -> DNF.t = _
+    let of_external_event : external_event -> DNF.t =
+      AEEDNFSet.map_reduce
+        of_aee_conj DNF.disj DNF.zero
 
-    let of_internal_event : internal_event -> DNF.t = _
+    let of_atomic_internal_event : Expr.branch -> bool -> DNF.t =
+      fun branch sgn ->
+      let disj_event = T.Left branch in
+      let derived_event = {
+        D.el=disj_event;
+        D.ind=0;
+        D.sgn=sgn
+      } in
+      DNF.singleton derived_event
 
-    let of_event : event -> DNF.t = _
+    let of_internal_event : internal_event -> DNF.t =
+      Expr.BranchMap.map_reduce
+        of_atomic_internal_event DNF.conj DNF.one
+      
+    let of_event : event -> DNF.t =
+      IEMap.map_reduce
+        (fun ie ee -> DNF.conj (of_internal_event ie) (of_external_event ee))
+        DNF.disj DNF.zero
 
     include T
   end
@@ -183,7 +218,11 @@ struct
                 
     let create_plan_from_dnf : dnf -> Phi.t -> plan = fun dnf phi ->
       let disj_request, synthesizer =
-        dnf |> DNF.make_computable |> PiPhiArithSynth.separate in
+        dnf
+        |> DNF.eliminate_subsumption (* TODO - test how necessary these really are *)
+        |> DNF.make_computable
+        |> DNF.eliminate_subsumption 
+        |> PiPhiArithSynth.separate in
       let pi_request, phi_request =
         PiPhi.DependentEvUtils.split_set disj_request in
       let eqn_plan pi_vals =
