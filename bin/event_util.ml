@@ -107,7 +107,7 @@ struct
             | LRDisj.Left t -> (LSet.add t c_left, c_right)
             | LRDisj.Right t -> (c_left, RSet.add t c_right)
           ) dep_lr (LSet.empty, RSet.empty) in
-      match (LSet.is_empty candidate_left, LSet.is_empty candidate_right) with
+      match (LSet.is_empty candidate_left, RSet.is_empty candidate_right) with
       | true, true -> Left (candidate_left) (*arbitrary_choice *)
       | false, false -> raise DependentEvNotDependent (*badly constructed*)
       | true, false -> Left (candidate_left)
