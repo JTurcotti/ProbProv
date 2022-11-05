@@ -1,10 +1,10 @@
 open Util
 open Event_util
 
-module BlamePrim =
 (**
    This module defines the primitive types
 *)
+module BlamePrim =
 struct
   open Expr
 
@@ -69,12 +69,27 @@ struct
       let get _ = Typecheck.index_branches (GetProg.get())
     end)
 
-  let get_call_event_blame : call_event -> Context.event = fun call_event ->
+  let get_event_for_func_ret : Expr.func -> Expr.ret -> Context.blame =
+    fun func ret ->
     let prog = get_program () in
-    let _, ctxt_opt = Expr.FuncMap.find call_event.ce_func prog in
+    let _, ctxt_opt = Expr.FuncMap.find func prog in
     let ctxt = force_some ctxt_opt in
-    let blame = Context.context_lookup_ret call_event.ce_ret ctxt in
+    Context.context_lookup_ret ret ctxt
+
+  let get_call_event_blame : call_event -> Context.event = fun call_event ->
+    let blame = get_event_for_func_ret call_event.ce_func call_event.ce_ret in
     Context.SiteMap.find (Context.ArgSite call_event.ce_arg) blame
+
+  let blame_source_as_site : blame_source -> Context.site = Context.(function
+      | BlameLabel l -> LabelSite l
+      | BlameCall(c, r) -> CallSite(c, r)
+      | BlameArg(_, a) -> ArgSite(a)
+    )
+
+  let get_intraprocedural_blame : blame_flow -> Context.event = fun blame_flow ->
+    let blame = get_event_for_func_ret
+        blame_flow.bf_tgt.bt_func blame_flow.bf_tgt.bt_ret in
+    Context.SiteMap.find (blame_source_as_site blame_flow.bf_src) blame
 
   (*
    Pi is the event that a branch is taken
@@ -217,12 +232,7 @@ struct
     module PiPhiArithSynth = PiPhi.ArithSynth(EqnS.ExprArith)
                 
     let create_plan_from_dnf : dnf -> Phi.t -> plan = fun dnf phi ->
-      let disj_request, synthesizer =
-        dnf
-        |> DNF.eliminate_subsumption (* TODO - test how necessary these really are *)
-        |> DNF.make_computable
-        |> DNF.eliminate_subsumption 
-        |> PiPhiArithSynth.separate in
+      let disj_request, synthesizer = PiPhiArithSynth.dnf_to_req_synth dnf in
       let pi_request, phi_request =
         PiPhi.DependentEvUtils.split_set disj_request in
       let eqn_plan pi_vals =
@@ -261,9 +271,28 @@ struct
     module Input = Union(Pi)(Phi)
     module Output = Beta
 
-    module InputSet = Set(Input)
+    module PiPhiSet = Set(Input)
+    module PiPhiMap = Map(Input)
 
-    let compute _ = InputSet.empty, (fun _ -> 0.)
+    module DNF = PiPhi.DNF
+
+    module PiPhiFloatSynth = PiPhi.ArithSynth(FloatArithmetic)
+
+    let compute : Beta.t -> PiPhiSet.t * (float PiPhiMap.t -> float) =
+      fun beta ->
+
+      (* assert that the passed event is actually dependent *)
+      let () = Beta.assert_dep beta in
+
+      let dnf = Beta.Set.fold (fun blame_flow ->
+          blame_flow |> get_intraprocedural_blame |> PiPhi.of_event |> DNF.conj)
+          beta DNF.one in
+
+      let disj_request, synth = PiPhiFloatSynth.dnf_to_req_synth dnf in
+      let union_request = PiPhi.DependentEvUtils.resolve_set disj_request in
+      let plan : float PiPhiMap.t -> float = fun pi_phi_results ->
+        synth (PiPhi.DependentEvUtils.provide_from_union_map pi_phi_results) in
+      (union_request, plan)
   end
 
   module PiPhiAggregator =

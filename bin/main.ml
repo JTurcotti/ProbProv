@@ -34,6 +34,11 @@ let typechecked_prog = (Typecheck.typecheck_program program)
 let _ = print_endline (Context_repr.typechecked_program_repr
                          typechecked_prog)
 
+module PA = Analyze.ProgramAnalyzer (struct
+    type t = Typecheck.typechecked_program
+    let get _ = typechecked_prog
+  end)
+  
 
 (*
 let bld = Context.Refactor.EERefactorizer.build
@@ -60,8 +65,6 @@ let _ = Context.(
     let out = bld ab in
     print_endline (Context_repr.external_event_repr out)
   )*)
-
-let _ = print_endline Layers.s
 
 (* DEBUGGING
    module StrSystem = Equations.EqnSystem(struct type t = string end)

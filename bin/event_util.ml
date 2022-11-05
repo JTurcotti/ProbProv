@@ -85,7 +85,7 @@ struct
     module DepEvR = DependentEv(R)
     module DepEvLR = DependentEv(LRDisj)
 
-    type outer_disj = Left of DepEvL.t | Right of DepEvR.t
+    module LRUnion = Union(DepEvL)(DepEvR)
 
     module LSet = DepEvL.Set
     module RSet = DepEvR.Set
@@ -100,7 +100,7 @@ struct
        `resolve` follows from the definition of the hash function for a disjunction:
        elements of the respective modules always have distinct hashes
     *)
-    let resolve : DepEvLR.t -> outer_disj = fun dep_lr ->
+    let resolve : DepEvLR.t -> LRUnion.t = fun dep_lr ->
       let candidate_left, candidate_right =
         LRSet.fold (fun d (c_left, c_right) ->
             match d with
@@ -113,21 +113,25 @@ struct
       | true, false -> Left (candidate_left)
       | false, true -> Right (candidate_right)
 
+    module DepLRSet = Set(DepEvLR)
+    module LRUnionSet = Set(LRUnion)
+    module LRUnionMap = Map(LRUnion)
+
+    let resolve_set : DepLRSet.t -> LRUnionSet.t =
+      fun dep_lr_set ->
+      DepLRSet.fold (compose resolve LRUnionSet.add) dep_lr_set LRUnionSet.empty
+          
+
     (* these differ from LSet, RSet, LRSet by being sets of those *)
     module DepLSet = Set(DepEvL)
     module DepRSet = Set(DepEvR)
-    module DepLRSet = Set(DepEvLR)
 
     (**
        `split_set` applies `resolve` to separate a set of disjucted dep evs 
     *)
-    let split_set : DepLRSet.t -> DepLSet.t * DepRSet.t = fun dep_lr_set ->
-      DepLRSet.fold (fun dep_lr (l_set, r_set) ->
-          match resolve dep_lr with
-          | Left d -> (DepLSet.add d l_set, r_set)
-          | Right d -> (l_set, DepRSet.add d r_set)
-        ) dep_lr_set (DepLSet.empty, DepRSet.empty)
-
+    let split_set : DepLRSet.t -> DepLSet.t * DepRSet.t = 
+      compose resolve_set LRUnion.splitSet
+        
     (**
        `multiplex` combines providers from left and right dep evs into a
        provider for disjunct
@@ -138,6 +142,13 @@ struct
       match resolve lr_request with
       | Left d -> l_provider d
       | Right d -> r_provider d
+
+    let union_provide_dep : (LRUnion.t -> 'a) -> (DepEvLR.t -> 'a) =
+      fun union_provider lr_request ->
+      lr_request |> resolve |> union_provider
+
+    let provide_from_union_map : ('a LRUnionMap.t) -> (DepEvLR.t -> 'a) =
+      fun mp -> union_provide_dep (fun lr -> LRUnionMap.find lr mp)
   end
 end
 

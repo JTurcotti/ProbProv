@@ -31,33 +31,35 @@ struct
 
 end
 
-module Union (Left : T) (Right : T) =
+type ('l, 'r) union_t = Left of 'l | Right of 'r
+
+module Union (L : T) (R : T) =
 struct
   module T =
   struct
-    type t = L of Left.t | R of Right.t
+    type t = (L.t, R.t) union_t
   end
 
   module UMap = Map(T)
   module USet = Set(T)
-  module LMap = Map(Left)
-  module LSet = Set(Left)
-  module RMap = Map(Right)
-  module RSet = Set(Right)
+  module LMap = Map(L)
+  module LSet = Set(L)
+  module RMap = Map(R)
+  module RSet = Set(R)
 
   let splitSet uset =
     USet.fold (fun e (lset, rset) ->
         match e with
-        | T.L e -> (LSet.add e lset, rset)
-        | T.R e -> (lset, RSet.add e rset))
+        | Left e -> (LSet.add e lset, rset)
+        | Right e -> (lset, RSet.add e rset))
       uset
       (LSet.empty, RSet.empty)
 
   let joinMap lmap rmap =
-    LMap.fold (fun l v umap -> UMap.add (L l) v umap) lmap
-      (RMap.fold (fun r v umap -> UMap.add (R r) v umap) rmap UMap.empty)
+    LMap.fold (fun l v umap -> UMap.add (Left l) v umap) lmap
+      (RMap.fold (fun r v umap -> UMap.add (Right r) v umap) rmap UMap.empty)
 
-  type t = T.t
+  include T
 end
 
 module type Defer =
@@ -96,4 +98,15 @@ sig
     
   val one : t
   val zero : t
+end
+
+module FloatArithmetic =
+struct
+  type t = float
+
+  let mult a b = a *. b
+  let add a b = a +. b
+  let sub a b = a -. b
+  let one = 1.
+  let zero = 0.
 end

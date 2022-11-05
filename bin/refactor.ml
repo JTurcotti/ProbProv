@@ -326,5 +326,18 @@ struct
         DHashMap.map_reduce
           (fun _ -> synth_dep_conj) synth_mult synth_one hashed_ev in
       DNF.OuterSet.map_reduce separate_conj synth_add synth_zero dnf
+
+    (**
+       THIS IS THE MAIN ENTRY POINT
+       
+       Use this to turn DNFs into computable structures over
+       dependent events
+    *)
+    let dnf_to_req_synth : DNF.t -> req_synth = fun dnf ->
+      dnf
+        |> DNF.eliminate_subsumption (* TODO - test how necessary these really are *)
+        |> DNF.make_computable
+        |> DNF.eliminate_subsumption
+        |> separate
   end
 end
