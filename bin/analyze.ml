@@ -150,11 +150,57 @@ struct
   module OmegaSet = Set(Omega)
   type omega = Omega.t
 
+  module DisjunctiveWorkhorse
+      (OriginalElt : DepHashT) (SequelElt: DepHashT) =
+  struct
+    module Original = DependentEv(OriginalElt)
+    module Sequel = DependentEv(SequelElt)
+    
+    module T = DependentDisj (OriginalElt) (SequelElt)
+    include T
+    include Refactor.DerivedDoubleSet(T)           
+
+
+    module OriginalSet = Set(Original)
+    module SequelSet = Set(Sequel)
+
+    module OriginalMap = Map(Original)
+
+    module Indirect =
+    struct
+
+      module SequelEqnSystem = Equations.EqnSystem(Sequel)
+
+      module ExprArithSynth = ArithSynth(SequelEqnSystem.ExprArith)
+
+      type equation_derivation =
+             OriginalSet.t *
+             SequelSet.t *
+             (float OriginalMap.t -> SequelEqnSystem.eqn)
+
+      let derive_sequel_equation : Sequel.t -> DNF.t -> equation_derivation =
+        fun seq dnf_for_seq ->
+        let disj_request, synthesizer =
+          ExprArithSynth.dnf_to_req_synth dnf_for_seq in
+        let orig_request, seq_request =
+          DependentEvUtils.split_set disj_request in
+        let eqn_derivation orig_vals =
+          let orig_provider orig =
+            SequelEqnSystem.const_expr (OriginalMap.find orig orig_vals) in
+          let seq_provider seq =
+            SequelEqnSystem.var_expr seq in
+          let orig_seq_disj_provider =
+            DependentEvUtils.multiplex orig_provider seq_provider in
+          let seq_eqn_expr =
+            synthesizer orig_seq_disj_provider in
+          SequelEqnSystem.eqn_of seq seq_eqn_expr in
+        (orig_request, seq_request, eqn_derivation)
+    end
+  end
 
   module PiPhi =
   struct
-    module T = DependentDisj (Pi.Elt) (Phi.Elt)
-    include Refactor.DerivedDoubleSet(T)
+    include DisjunctiveWorkhorse (Pi.Elt) (Phi.Elt)
 
     open Context
 
@@ -164,10 +210,10 @@ struct
       fun (CallEvent(Call(func, ind), arg, ret, sign)) ->
       if not sign then raise BadPhi else
         let call_event = {
-            ce_func=func;
-            ce_arg=arg;
-            ce_ret=ret
-          } in
+          ce_func=func;
+          ce_arg=arg;
+          ce_ret=ret
+        } in
         let disj_event = T.Right call_event in
         let derived_event = {
           D.el=disj_event;
@@ -179,7 +225,7 @@ struct
     let of_aee_conj : aee_conjunction -> DNF.t =
       AEEConjunctiveSet.map_reduce
         of_aee DNF.conj DNF.one
-    
+
     let of_external_event : external_event -> DNF.t =
       AEEDNFSet.map_reduce
         of_aee_conj DNF.disj DNF.zero
@@ -197,19 +243,19 @@ struct
     let of_internal_event : internal_event -> DNF.t =
       Expr.BranchMap.map_reduce
         of_atomic_internal_event DNF.conj DNF.one
-      
+
     let of_event : event -> DNF.t =
       IEMap.map_reduce
         (fun ie ee -> DNF.conj (of_internal_event ie) (of_external_event ee))
         DNF.disj DNF.zero
-
-    include T
   end
-  
+
   module PiComputation = 
   struct
     module Output = Pi
-    let compute _ = 0.5
+
+    (* this assumes each branch has an independent 1/2 chance of going each way *)
+    let compute pi = pow 0.5 (Pi.Set.cardinal pi)
   end
 
   module PiComputationLayer = Layers.ConstantComputationLayer (Pi) (PiComputation)
@@ -219,34 +265,9 @@ struct
     module Input = Pi
     module Output = Phi
 
-    module EqnS = Equations.EqnSystem(Phi)    
-
-    (* this is what we aim to compute*)
-    type plan = PiSet.t *
-                PhiSet.t *
-                (float PiMap.t -> Equations.EqnSystem(Output).eqn)
-
     module DNF = PiPhi.DNF
-    type dnf = DNF.t
 
-    module PiPhiArithSynth = PiPhi.ArithSynth(EqnS.ExprArith)
-                
-    let create_plan_from_dnf : dnf -> Phi.t -> plan = fun dnf phi ->
-      let disj_request, synthesizer = PiPhiArithSynth.dnf_to_req_synth dnf in
-      let pi_request, phi_request =
-        PiPhi.DependentEvUtils.split_set disj_request in
-      let eqn_plan pi_vals =
-        let pi_provider pi =
-          EqnS.const_expr (PiMap.find pi pi_vals) in
-        let phi_provider phi =
-          EqnS.var_expr phi in
-        let piphi_provider =
-          PiPhi.DependentEvUtils.multiplex pi_provider phi_provider in
-        let eqn_expr = synthesizer piphi_provider in
-        EqnS.eqn_of phi eqn_expr in
-      (pi_request, phi_request, eqn_plan)
-
-    let compute : Output.t -> plan =
+    let compute : Output.t -> PiPhi.Indirect.equation_derivation =
       fun phi -> 
 
       (* assert that the passed event is actually dependent *)
@@ -259,8 +280,8 @@ struct
       let dnf = Phi.Set.fold (fun call_event ->
           call_event |> get_call_event_blame |> PiPhi.of_event |> DNF.conj)
           phi DNF.one in
-      
-      create_plan_from_dnf dnf phi
+
+      PiPhi.Indirect.derive_sequel_equation phi dnf
   end
 
   module PhiComputationLayer = Layers.IndirectComputationLayer (Pi) (Phi)
@@ -301,6 +322,14 @@ struct
   module BetaComputationLayer =
     Layers.DirectComputationLayer (Union(Pi)(Phi)) (Beta)
       (PiPhiAggregator) (BetaComputation)
+
+  module BetaEta =
+  struct
+    module T = DependentDisj (Beta.Elt) (Eta.Elt)
+    include Refactor.DerivedDoubleSet(T)
+
+    include T
+  end
 
   module EtaComputation =
   struct

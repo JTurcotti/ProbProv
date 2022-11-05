@@ -110,3 +110,6 @@ struct
   let one = 1.
   let zero = 0.
 end
+
+let rec pow f i =
+  if i = 0 then 1. else f *. (pow f (i - 1))
