@@ -371,19 +371,21 @@ struct
       } in
       DNF.singleton derived_event
 
-    let teleflow_computation : (int -> (DNF.t -> DNF.t)) ->
+    let teleflow_computation : bool -> (int -> (DNF.t -> DNF.t)) ->
       blame_teleflow -> DNF.t =
+      (* if refl_unital is true than flows where source equals target are
+         taken to be one, otherwise they are computed out *)
       (* ind_transformer is included to make this computation more general.
          for specific computation of teleflow events it is constantly the
          identity function, but for computation of larger flows such as
          full interprocedural events below other values are used *)
-      fun ind_transformer teleflow ->
+      fun refl_unital ind_transformer teleflow ->
       (* this computation bakes in a formula -
          both the correctness of that formula and the correctness of its
          implementation are vital to the correctness of the analysis.
          The most sensitive component is the correct assignment of
          indendence *)
-      if teleflow.bt_src = teleflow.bt_tgt then DNF.one else
+      if refl_unital && teleflow.bt_src = teleflow.bt_tgt then DNF.one else
         List.fold_right (
           fun (Expr.Call(func, ind), ret) ->
             let intermediate_tgt = {
@@ -399,12 +401,12 @@ struct
                       bf_src=BlameCall(Expr.Call(func, ind), ret);
                       bf_tgt=teleflow.bt_tgt
                     })
-              ))) (get_intrafunc_callsites teleflow.bt_tgt) DNF.one
+              ))) (get_intrafunc_callsites teleflow.bt_tgt) DNF.zero
 
 
     (* express a teleflow as a DNF of beta and eta *)
     let teleflow_event : blame_teleflow -> DNF.t =
-      teleflow_computation (fun _ dnf -> dnf)
+      teleflow_computation true (fun _ dnf -> dnf)
 
 
     (* expresses a direct blame flow (omega) as a DNF of beta and eta *)
@@ -443,7 +445,7 @@ struct
                   bt_src=g_blame_target;
                   bt_tgt=blame_target
                 } in
-                teleflow_computation (fun ind -> DNF.conj (
+                teleflow_computation false (fun ind -> DNF.conj (
                     (* arguably, the choice to insert
                        derivation by the index ind here
                        is the most surprising part of the
