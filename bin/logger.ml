@@ -8,10 +8,20 @@ let check_first _ =
   if !first then (first := false; "") else ", "
 
 module MapAndSetPrinter
-    (Inner: sig
+    (InnerElt: sig
        type t val fprint_t : Format.formatter -> t -> unit
      end) =
 struct
+  module Inner =
+  struct
+    include Set(InnerElt)
+        
+    let fprint_t ff s =
+      if is_empty s then Format.fprintf ff "𝟙" else
+        iter (InnerElt.fprint_t ff) s
+  end
+  
+  
   module M = Map(Inner)
   module S = Set(Inner)
 
@@ -71,39 +81,37 @@ let fprint_direct_blame_flow ff : direct_blame_flow -> unit =
     fprint_blame_target tgt
 
 module Pi = struct
-  include Set(struct type t = branch end) 
+  type t = branch
 
-  let fprint_t ff pi =
-    iter (fun (Branch(i)) ->
-        Format.fprintf ff "π%s" (int_subscript_repr i)) pi
+  let fprint_t ff (Branch(i)) =
+    Format.fprintf ff "π%s" (int_subscript_repr i)
 end
 
 module Phi = struct
-  include Set(struct type t = call_event end)
+  type t = call_event
 
-  let fprint_t ff =
-    iter (fun {ce_func=Func f_s; ce_arg=Arg(a_i, _); ce_ret=Ret(r_i, _)} ->
-        Format.fprintf ff "ϕ⟨%s⟩ₐ%sʳ%s" f_s
-          (int_subscript_repr a_i) (int_superscript_repr r_i))
+  let fprint_t ff {ce_func=Func f_s; ce_arg=Arg(a_i, _); ce_ret=Ret(r_i, _)} =
+    Format.fprintf ff "ϕ⟨%s⟩ₐ%sʳ%s" f_s
+      (int_subscript_repr a_i) (int_superscript_repr r_i)
 end
 
 module Beta = struct
-  include Set(struct type t = blame_flow end)
+  type t = blame_flow
 
-  let fprint_t ff = iter (fprint_blame_flow ff)
+  let fprint_t = fprint_blame_flow
 end
 
 module Eta = struct
-  include Set(struct type t = blame_teleflow end)
+  type t = blame_teleflow
 
-  let fprint_t ff = iter (fprint_blame_teleflow ff)
+  let fprint_t = fprint_blame_teleflow
 end
 
 
 module Omega = struct
-  include Set(struct type t = direct_blame_flow end) 
+  type t = direct_blame_flow
 
-  let fprint_t ff = iter (fprint_direct_blame_flow ff)
+  let fprint_t = fprint_direct_blame_flow
 end
 
 module type LayerLogger =
@@ -142,9 +150,9 @@ module BuildLayerLogger
        val global_log_string : string -> unit
      end) =
 struct
-  module T = T
-  include T
   module MSFormat = MapAndSetPrinter(T)
+  module T = Set(T)
+        
 
   let init _ =
     let oc = open_out Args.filename in
@@ -208,49 +216,48 @@ struct
   let eta_log_file = dirname ^ "eta_log_file"
   let omega_log_file = dirname ^ "omega_log_file"
 
-  exception DummyLoggerCalled
-  let global_logger = ref (fun _ -> raise DummyLoggerCalled)
-  let global_log s = !global_logger s
+  let global_log_file = dirname ^ "global_log_file"
 
+  module GlobalLogger = BuildLayerLogger (struct
+      type t = unit let fprint_t _ _ = () end) (struct
+      let logger_name = "Global"
+      let filename = global_log_file
+      let global_log_string _ = ()
+    end)
+  
   module PiLogger = BuildLayerLogger (Pi) (struct
       let logger_name = "Pi"
       let filename = pi_log_file
-      let global_log_string = global_log
+      let global_log_string = GlobalLogger.log_string
     end)
 
   module PhiLogger = BuildLayerLogger (Phi) (struct
       let logger_name = "Phi"
       let filename = phi_log_file
-      let global_log_string = global_log
+      let global_log_string = GlobalLogger.log_string
     end)
 
   module BetaLogger = BuildLayerLogger (Beta) (struct
       let logger_name = "Beta"
       let filename = beta_log_file
-      let global_log_string = global_log
+      let global_log_string = GlobalLogger.log_string
     end)
 
   module EtaLogger = BuildLayerLogger (Eta) (struct
       let logger_name = "Eta"
       let filename = eta_log_file
-      let global_log_string = global_log
+      let global_log_string = GlobalLogger.log_string
     end
     )
 
   module OmegaLogger = BuildLayerLogger (Omega) (struct
       let logger_name = "Omega"
       let filename = omega_log_file
-      let global_log_string = global_log
+      let global_log_string = GlobalLogger.log_string
     end)
 
-  let () = global_logger := fun s ->
-      PiLogger.log_string s;
-      PhiLogger.log_string s;
-      BetaLogger.log_string s;
-      EtaLogger.log_string s;
-      OmegaLogger.log_string s
-
   let () =
+    GlobalLogger.init();
     PiLogger.init();
     PhiLogger.init();
     BetaLogger.init();
