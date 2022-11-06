@@ -15,7 +15,7 @@ end
 module type ConstantComputation =
 sig
   module Output : T
-  val compute : Output.t -> float
+  val compute : (string -> unit) -> Output.t -> float
 end
 
 module ConstantComputationLayer (Output : T)
@@ -35,7 +35,7 @@ struct
     Logger.log_request output_request;
 
     let response = OutputSet.fold (fun output_point output_result ->
-        OutputMap.add output_point (Action.compute output_point)
+        OutputMap.add output_point (Action.compute Logger.log_string output_point)
           output_result) output_request OutputMap.empty in
 
     Logger.global_log_string "Constant compute complete";
@@ -47,7 +47,7 @@ module type DirectComputation =
 sig
   module Input : T
   module Output : T
-  val compute : Output.t -> Set(Input).t * (float Map(Input).t -> float)
+  val compute : (string -> unit) -> Output.t -> Set(Input).t * (float Map(Input).t -> float)
 end
 
 (* a direct computation layer takes input from another layer, and is able
@@ -97,7 +97,7 @@ struct
        in terms of those inputs *)
     let input_request, output_plan =
       OutputSet.fold (fun output_point (input_request, output_plan) ->
-          let req_inputs, plan = Action.compute output_point in
+          let req_inputs, plan = Action.compute Logger.log_string output_point in
           (InputSet.union input_request req_inputs,
            OutputMap.add output_point plan output_plan))
         output_request (InputSet.empty, OutputMap.empty) in
@@ -120,7 +120,7 @@ sig
   module Input : T
   module Output : T
 
-  val compute : Output.t ->
+  val compute : (string -> unit) -> Output.t ->
     Set(Input).t * Set(Output).t *
     (float Map(Input).t -> Equations.EqnSystem(Output).eqn)
 end
@@ -183,7 +183,8 @@ struct
           else
             let cum_out_reqs, cum_in_reqs, cum_eqns =
               OutputSet.fold (fun out_req (prior_out_req, prior_in_req, prior_eqns) ->
-                  let new_in_req, new_out_req, deferred_eqn = Action.compute out_req in
+                  let new_in_req, new_out_req, deferred_eqn =
+                    Action.compute Logger.log_string out_req in
                   (OutputSet.union new_out_req prior_out_req,
                    InputSet.union new_in_req prior_in_req,
                    deferred_eqn :: prior_eqns))

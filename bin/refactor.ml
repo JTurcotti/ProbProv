@@ -33,6 +33,10 @@ sig
   val subset: t -> t -> bool
 
   val map_reduce: (elt -> 'a) -> ('a -> 'a -> 'a) -> 'a -> t -> 'a
+
+  val lift_format:
+    (Format.formatter -> elt -> unit) -> string -> string ->
+    (Format.formatter -> t -> unit)
 end
 
 (*
@@ -213,21 +217,31 @@ struct
              (make_computable c))
 end
 
+type 't derived_t = {el: 't; ind: int; sgn: bool}
+
 module Derived (T : DepHashT) =
 struct
   module D =
   struct
-    type t = {el: T.t; ind: int; sgn: bool}
+    type t = T.t derived_t
 
     let neg t = {el=t.el; ind=t.ind; sgn=not t.sgn}
 
     module HashT = struct type t = T.hash_t * int end
     type hash_t = HashT.t
     let hash t = (T.hash t.el, t.ind)
+
+    let lift_format (t_format : Format.formatter -> T.t -> unit) :
+      Format.formatter -> t -> unit =
+      fun ff {el=el; ind=ind; sgn=sgn} ->
+      Format.fprintf ff "%s" (
+        unicode_bar_str_cond sgn
+          (Format.asprintf "⟨%a⟩%s" t_format el
+             (Expr_repr.int_subscript_repr ind)))
   end
   
   include D
-
+      
   (* we consider dependent events over Derived Ts to access
      their assertion of hash-constancy before erasure
   *)
@@ -241,10 +255,19 @@ struct
     Dep.Set.fold (fun d -> S.add d.el) de S.empty
 end
 
+type 't dnf_t = 't derived_t s_constr s_constr
+
 module DerivedDoubleSet (T : DepHashT) =
 struct
   module D = Derived(T)
   module DNF = DoubleSet (Set(D)) (Set(Set(D))) (D)
+
+  type elt = T.t
+
+  let dnf_lift_format t_format : Format.formatter -> DNF.t -> unit =
+    DNF.OuterSet.lift_format
+      (DNF.InnerSet.lift_format (D.lift_format t_format) "" "𝟙") " + " "𝟘"
+    
 
   module DepEv = DependentEv(T)
 

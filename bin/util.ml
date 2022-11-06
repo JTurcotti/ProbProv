@@ -1,4 +1,6 @@
-let compose f g x = g (f x)
+let compose f g x = g (f x)    
+let id x = x
+
 
 module type T = sig type t end
 
@@ -6,6 +8,15 @@ module Ord (T : T) = struct
   type t = T.t
   let compare = Stdlib.compare
 end
+
+let first = ref true
+let check_first _ =
+  if !first then (first := false; "") else ", "
+let check_first_s s =
+  if !first then (first := false; "") else s
+
+type 't s_constr = 't Set.s_constr
+type ('k, 'v) m_constr = ('k, 'v) Map.m_constr
 
 module Set (T : T) =
 struct
@@ -15,6 +26,18 @@ struct
     match choose_opt t with
     | None -> unit
     | Some el -> fold (compose map reduce) (remove el t) (map el)
+                   
+  let lift_format format_t infix unit: Format.formatter -> t -> unit =
+    fun ff st ->
+    if is_empty st then Format.fprintf ff "%s" unit
+    else (
+      let old = !first in
+      first := true;
+      iter (fun el ->
+          Format.fprintf ff "%s" (check_first_s infix);
+          Format.fprintf ff "%a" format_t el) st;
+      first := old
+    )
 end
 
 module Map (T : T) =
@@ -87,6 +110,10 @@ end
 
 let unicode_bar = "\u{0305}"
 let unicode_bar_cond b = if b then "" else unicode_bar
+
+let unicode_bar_str =
+  String.fold_left (fun prefix c -> Format.sprintf "%s%c%s" prefix c unicode_bar) ""
+let unicode_bar_str_cond b = if b then id else unicode_bar_str 
 
 module type Arithmetic =
 sig

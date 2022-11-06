@@ -75,6 +75,11 @@ struct
     let hash = function
       | Left t -> HLeft (L.hash t)
       | Right t -> HRight (R.hash t)
+
+    let disj_lift_format l_format r_format : Format.formatter -> t -> unit =
+      fun ff -> function
+        | Left l -> l_format ff l
+        | Right r -> r_format ff r
   end
 
   include LRDisj

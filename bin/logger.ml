@@ -151,8 +151,12 @@ module BuildLayerLogger
      end) =
 struct
   module MSFormat = MapAndSetPrinter(T)
-  module T = Set(T)
-        
+  module S = Set(T)
+
+  let fprint_t : Format.formatter -> S.t -> unit =
+    S.lift_format T.fprint_t "" "𝟙"
+
+  module T = S
 
   let init _ =
     let oc = open_out Args.filename in

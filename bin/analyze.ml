@@ -54,7 +54,7 @@ struct
       | BlameCall(c, r) -> CallSite(c, r)
       | BlameArg(_, a) -> ArgSite(a)
     )
-  
+
   let get_intraprocedural_blame : blame_flow -> Context.event = fun blame_flow ->
     let blame = get_event_for_func_ret
         blame_flow.bf_tgt.bt_func blame_flow.bf_tgt.bt_ret in
@@ -214,6 +214,9 @@ struct
 
     exception BadPhi
 
+    let dnf_format : Format.formatter -> DNF.t -> unit =
+      dnf_lift_format (disj_lift_format Logger.Pi.fprint_t Logger.Phi.fprint_t)
+
     let of_aee : atomic_external_event -> DNF.t =
       fun (CallEvent(Call(func, ind), arg, ret, sign)) ->
       if not sign then raise BadPhi else
@@ -223,10 +226,10 @@ struct
           ce_ret=ret
         } in
         let disj_event = T.Right call_event in
-        let derived_event = {
-          D.el=disj_event;
-          D.ind=ind;
-          D.sgn=true
+        let derived_event : D.t = {
+          el=disj_event;
+          ind=ind;
+          sgn=true
         } in
         DNF.singleton derived_event
 
@@ -241,10 +244,10 @@ struct
     let of_atomic_internal_event : Expr.branch -> bool -> DNF.t =
       fun branch sgn ->
       let disj_event = T.Left branch in
-      let derived_event = {
-        D.el=disj_event;
-        D.ind=0;
-        D.sgn=sgn
+      let derived_event : D.t = {
+        el=disj_event;
+        ind=0;
+        sgn=sgn
       } in
       DNF.singleton derived_event
 
@@ -263,7 +266,7 @@ struct
     module Output = Pi
 
     (* this assumes each branch has an independent 1/2 chance of going each way *)
-    let compute pi = pow 0.5 (Pi.Set.cardinal pi)
+    let compute _ pi = pow 0.5 (Pi.Set.cardinal pi)
   end
 
   module PiComputationLayer = Layers.ConstantComputationLayer
@@ -277,8 +280,8 @@ struct
 
     module DNF = PiPhi.DNF
 
-    let compute : Phi.t -> PiPhi.Indirect.equation_derivation =
-      fun phi -> 
+    let compute : (string -> unit) -> Phi.t -> PiPhi.Indirect.equation_derivation =
+      fun log phi -> 
 
       (* assert that the passed event is actually dependent *)
       let () = Phi.assert_dep phi in
@@ -290,6 +293,10 @@ struct
       let dnf = Phi.Set.fold (fun call_event ->
           call_event |> get_call_event_blame |> PiPhi.of_event |> DNF.conj)
           phi DNF.one in
+
+      let () = log (Format.asprintf "Compute(%a) served by DNF: %a"
+                      Logger.Loggers.PhiLogger.fprint_t phi
+                      PiPhi.dnf_format dnf) in
 
       PiPhi.Indirect.derive_sequel_equation phi dnf
   end
@@ -310,8 +317,9 @@ struct
 
     module DNF = PiPhi.DNF
 
-    let compute : Beta.t -> PiPhiSet.t * (float PiPhiMap.t -> float) =
-      fun beta ->
+    let compute : (string -> unit) -> Beta.t ->
+      PiPhiSet.t * (float PiPhiMap.t -> float) =
+      fun log beta ->
 
       (* assert that the passed event is actually dependent *)
       let () = Beta.assert_dep beta in
@@ -319,6 +327,10 @@ struct
       let dnf = Beta.Set.fold (fun blame_flow ->
           blame_flow |> get_intraprocedural_blame |> PiPhi.of_event |> DNF.conj)
           beta DNF.one in
+
+      let () = log (Format.asprintf "Compute(%a) served by DNF: %a"
+                      Logger.Loggers.BetaLogger.fprint_t beta
+                      PiPhi.dnf_format dnf) in
 
       PiPhi.Direct.derive_float dnf
   end
@@ -335,23 +347,27 @@ struct
   struct
     include DisjunctiveWorkhorse (Beta.Elt) (Eta.Elt)
 
+    let dnf_format : Format.formatter -> DNF.t -> unit =
+      dnf_lift_format (disj_lift_format Logger.Beta.fprint_t Logger.Eta.fprint_t)
+
+
     let of_beta : int -> blame_flow -> DNF.t =
       fun ind flow ->
       let disj_event = T.Left flow in
-      let derived_event = {
-        D.el=disj_event;
-        D.ind=ind;
-        D.sgn=true
+      let derived_event : D.t = {
+        el=disj_event;
+        ind=ind;
+        sgn=true
       } in
       DNF.singleton derived_event
 
     let of_eta : int -> blame_teleflow -> DNF.t =
       fun ind flow ->
       let disj_event = T.Right flow in
-      let derived_event = {
-        D.el=disj_event;
-        D.ind = ind;
-        D.sgn=true
+      let derived_event : D.t = {
+        el=disj_event;
+        ind = ind;
+        sgn=true
       } in
       DNF.singleton derived_event
 
@@ -375,21 +391,21 @@ struct
               bt_ret=ret} in
             DNF.disj (ind_transformer ind (
                 DNF.conj
-                (of_eta ind {
-                    bt_src=teleflow.bt_src;
-                    bt_tgt=intermediate_tgt
-                  })
-                (of_beta 0 {
-                    bf_src=BlameCall(Expr.Call(func, ind), ret);
-                    bf_tgt=teleflow.bt_tgt
-                  })
-            ))) (get_intrafunc_callsites teleflow.bt_tgt) DNF.one
-      
+                  (of_eta ind {
+                      bt_src=teleflow.bt_src;
+                      bt_tgt=intermediate_tgt
+                    })
+                  (of_beta 0 {
+                      bf_src=BlameCall(Expr.Call(func, ind), ret);
+                      bf_tgt=teleflow.bt_tgt
+                    })
+              ))) (get_intrafunc_callsites teleflow.bt_tgt) DNF.one
+
 
     (* express a teleflow as a DNF of beta and eta *)
     let teleflow_event : blame_teleflow -> DNF.t =
       teleflow_computation (fun _ dnf -> dnf)
-            
+
 
     (* expresses a direct blame flow (omega) as a DNF of beta and eta *)
     let interprocedural_event : direct_blame_flow -> DNF.t =
@@ -465,15 +481,20 @@ struct
     module Output = Eta
 
     module DNF = BetaEta.DNF
-    
-    let compute : Eta.t -> BetaEta.Indirect.equation_derivation =
-      fun eta ->
+
+    let compute : (string -> unit) -> Eta.t ->
+      BetaEta.Indirect.equation_derivation =
+      fun log eta ->
 
       let () = Eta.assert_dep eta in
 
       let dnf = Eta.Set.fold (fun blame_teleflow ->
           blame_teleflow |> BetaEta.teleflow_event |> DNF.conj)
           eta DNF.one in
+
+      let () = log (Format.asprintf "Compute(%a) served by DNF: %a"
+                      Logger.Loggers.EtaLogger.fprint_t eta
+                      BetaEta.dnf_format dnf) in
 
       BetaEta.Indirect.derive_sequel_equation eta dnf
   end
@@ -495,14 +516,20 @@ struct
 
     module DNF = BetaEta.DNF
 
-    let compute : Omega.t -> BetaEtaSet.t * (float BetaEtaMap.t -> float) =
-      fun omega ->
+    let compute : (string -> unit) -> Omega.t ->
+      BetaEtaSet.t * (float BetaEtaMap.t -> float) =
+      fun log omega ->
 
       let () = Omega.assert_dep omega in
 
       let dnf = Omega.Set.fold (fun direct_blame_flow ->
           direct_blame_flow |> BetaEta.interprocedural_event |> DNF.conj)
           omega DNF.one in
+
+      let () = log (Format.asprintf "Compute(%a) served by DNF: %a"
+                      Logger.Loggers.OmegaLogger.fprint_t omega
+                      BetaEta.dnf_format dnf) in
+
 
       BetaEta.Direct.derive_float dnf
   end
