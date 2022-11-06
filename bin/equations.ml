@@ -25,8 +25,7 @@ let val_fmt_to_float = delim_str_to_float '@'
     
 
 let matlab_prog_fmt n_vars eqns_repr =
-  Printf.sprintf {|
-n = %d;
+  Printf.sprintf {|n = %d;
 x0 = 0.5 * ones(1, n);
 F = @(x) [%s];
 [sols, vals] = fsolve(F, x0, optimoptions("fsolve", "Display","none"));
@@ -43,13 +42,13 @@ fprintf('%s');|}
     n_vars eqns_repr start_token sol_fmt mid_token val_fmt end_token
 
 let dirname = "computation/"
-let output_scriptname name = dirname ^ "ocaml_matlab_eqn__" ^ name
-let output_filename name = Printf.sprintf "%s%s.m" dirname (output_scriptname name)
+let output_scriptname name = "ocaml_matlab_eqn__" ^ name
+let output_filename name = Printf.sprintf "%s.m" (output_scriptname name)
 let result_filename name = dirname ^ "ocaml_matlab_eqn_out__" ^ name
 
 let matlab_runcmd name = Printf.sprintf
-    {|matlab -nojvm -batch "%s" > %s|}
-    (output_scriptname name) (result_filename name)
+    {|matlab -nojvm -batch "cd %s; %s" > %s|}
+    dirname (output_scriptname name) (result_filename name)
 
 (*
 An EqnSolver allows you to build up a system of equations over
@@ -148,13 +147,18 @@ struct
 
   (* given a list of matlab equations referring to variables
      x(1), x(2), ..., x(n_vars), solve it with matlab and store
-     the result to the file result_filename *)
-  let exec_matlab_solve (n_vars : int) (eqns_repr : string) (name : string) : int =
+     the result to the file result_filename.
+     name is a name for the task, and log logs the command run by the task
+  *)
+  let exec_matlab_solve
+      (n_vars : int) (eqns_repr : string) (name : string) (log : string -> unit) : int =
     let matlab_prog_text = matlab_prog_fmt n_vars eqns_repr in
     let oc = open_out (output_filename name) in
     let () = Printf.fprintf oc "%s" matlab_prog_text in
     let () = close_out oc in
-    Sys.command (matlab_runcmd name)
+    let cmd = matlab_runcmd name in
+    log cmd;
+    Sys.command cmd
       
   (* read a matlab output file as a list of floats,
      can throw Sys_error  *)
@@ -191,7 +195,7 @@ struct
       takes a name to associate with the intermediate files of the
       computation for debugging's sake.
   *)
-  let solve (Sys(vars, eqns)) (name : string) : float varMap = 
+  let solve (Sys(vars, eqns)) (name : string) (log : string -> unit) : float varMap = 
     let n_vars = VarSet.cardinal vars in
     let () = if not (n_vars > 0) then raise
           (BadSystem (name ^ " system needs at least 1 variable")) else () in
@@ -215,9 +219,10 @@ struct
     let eqns_repr = EqnSet.fold (fun eqn repr ->
         Printf.sprintf "%s, %s" (eqn_repr eqn) repr) eqns "" in
     try
-      let out_code = exec_matlab_solve n_vars eqns_repr name in
+      let out_code = exec_matlab_solve n_vars eqns_repr name log in
       let () = if out_code <> 0 then
-          raise (Sys_error "matlab call failed") else ()  in
+          raise (Sys_error (Printf.sprintf "%s matlab call failed (%d)"
+                              name out_code)) else ()  in
       read_matlab_result i_var name
     with Sys_error s ->
       raise (SolveFailure s)

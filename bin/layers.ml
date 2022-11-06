@@ -29,11 +29,11 @@ struct
   module Output = Output
   module OutputSet = Set(Output)
   module OutputMap = Map(Output)
-  
+
   let compute output_request =
     Logger.global_log_string "Constant compute called";
     Logger.log_request output_request;
-    
+
     let response = OutputSet.fold (fun output_point output_result ->
         OutputMap.add output_point (Action.compute output_point)
           output_result) output_request OutputMap.empty in
@@ -75,12 +75,12 @@ module DirectComputationLayer
    with module Output = Output) = 
 struct
   module Output = Output
-    
+
   module OutputSet = Set(Output)
   module InputSet = Set(Input)
   module OutputMap = Map(Output)
   module InputMap = Map(Input)
-      
+
   (*
      compute here calls Action.compute on each input point,
      accumulating the input requests as well as the plans for
@@ -92,7 +92,7 @@ struct
   let compute (output_request : OutputSet.t) =
     Logger.global_log_string "Direct compute called";
     Logger.log_request output_request;
-    
+
     (* accumulate the needed inputs, and the desired outputs
        in terms of those inputs *)
     let input_request, output_plan =
@@ -119,7 +119,7 @@ module type IndirectComputation =
 sig
   module Input : T
   module Output : T
-      
+
   val compute : Output.t ->
     Set(Input).t * Set(Output).t *
     (float Map(Input).t -> Equations.EqnSystem(Output).eqn)
@@ -145,7 +145,7 @@ struct
   module InputSet = Set(Input)
   module OutputMap = Map(Output)
   module InputMap = Map(Input)
-      
+
   type outputSet = OutputSet.t
   type inputSet = InputSet.t
   type 't inputMap = 't InputMap.t
@@ -155,7 +155,7 @@ struct
   type eqn = EqnSolver.eqn
 
   type deferred_eqn_list = (float inputMap -> eqn) list
-  
+
   (* compute for an indirect computation is the most complex yet
      each output request generates a set of input requests, but also
      potentially more output requests.
@@ -168,43 +168,50 @@ struct
     Logger.global_log_string "Indirect compute called";
     Logger.log_request output_request;
 
-    
-    (* given that we have already determined the need for
-       output points `prior_out_req`, input points `prior_in_req`, and
-       equations `prior_eqns`, update those values to reflect the new
-       output requests in `output_request`.
-    *)
-    let rec process_output_request
-        output_request prior_out_req prior_in_req prior_eqns
-      : (outputSet * inputSet * deferred_eqn_list) =
-      if OutputSet.is_empty output_request then
-        (prior_out_req, prior_in_req, prior_eqns)
-      else
-        let cum_out_reqs, cum_in_reqs, cum_eqns =
-          OutputSet.fold (fun out_req (prior_out_req, prior_in_req, prior_eqns) ->
-              let new_in_req, new_out_req, deferred_eqn = Action.compute out_req in
-              (OutputSet.union new_out_req prior_out_req,
-               InputSet.union new_in_req prior_in_req,
-               deferred_eqn :: prior_eqns))
-            output_request
-            (prior_out_req, prior_in_req, prior_eqns) in
-        process_output_request
-          (OutputSet.diff cum_out_reqs prior_out_req) cum_out_reqs cum_in_reqs cum_eqns in
-    let _, input_request, deferred_eqns =
-      process_output_request output_request OutputSet.empty InputSet.empty [] in
+    let response = if OutputSet.is_empty output_request then OutputMap.empty else (    
+        let rec process_output_request
+            output_request prior_out_req prior_in_req prior_eqns
+          : (outputSet * inputSet * deferred_eqn_list) =
+          (* given that we have already determined the need for
+             output points `prior_out_req`, input points `prior_in_req`, and
+             equations `prior_eqns`, update those values to reflect the new
+             output requests in `output_request`.
+          *)
 
-    (* ask the pred layer for the needed inputs *)
-    let input_result = PredLayer.compute input_request in
-    let eqns = List.fold_right (fun deferred_eqn eqns ->
-        EqnSolver.add (deferred_eqn input_result) eqns)
-        deferred_eqns EqnSolver.empty in
+          if OutputSet.is_empty output_request then
+            (prior_out_req, prior_in_req, prior_eqns)
+          else
+            let cum_out_reqs, cum_in_reqs, cum_eqns =
+              OutputSet.fold (fun out_req (prior_out_req, prior_in_req, prior_eqns) ->
+                  let new_in_req, new_out_req, deferred_eqn = Action.compute out_req in
+                  (OutputSet.union new_out_req prior_out_req,
+                   InputSet.union new_in_req prior_in_req,
+                   deferred_eqn :: prior_eqns))
+                output_request
+                (prior_out_req, prior_in_req, prior_eqns) in
+            process_output_request
+              (OutputSet.diff cum_out_reqs prior_out_req) cum_out_reqs cum_in_reqs cum_eqns in
+        let _, input_request, deferred_eqns =
+          process_output_request output_request OutputSet.empty InputSet.empty [] in
 
-    (* solve the system *)
-    let eqn_solve_result = EqnSolver.solve eqns in
+        (* ask the pred layer for the needed inputs *)
+        let input_result = PredLayer.compute input_request in
+        let eqns = List.fold_right (fun deferred_eqn eqns ->
+            EqnSolver.add (deferred_eqn input_result) eqns)
+            deferred_eqns EqnSolver.empty in
 
-    (* return a mapping containing only the originally requested outputs *)
-    let response = OutputMap.filter (fun output_req _ ->
-        OutputSet.mem output_req output_request) (eqn_solve_result Name.name) in
+        (* solve the system *)
+        let eqn_solve_result = EqnSolver.solve eqns in
+
+        (* when matlab runs a syscall to solve its system of equations,
+           this weill get called on that syscall's string command *)
+        let log matlab_cmd =
+          Logger.log_string (Printf.sprintf "Running Matlab: %s" matlab_cmd) in
+
+        (* return a mapping containing only the originally requested outputs *)
+        OutputMap.filter (fun output_req _ ->
+            OutputSet.mem output_req output_request)
+          (eqn_solve_result Name.name log)) in
 
     Logger.global_log_string "Indirect compute complete";
     Logger.log_response response;
@@ -220,16 +227,12 @@ module AggregatorLayer
      with module Output = Right) :
   (ComputationLayer 
    with module Output = Union(Left)(Right)) =
-  struct
-    module Output = Union(Left)(Right)
-      
+struct
+  module Output = Union(Left)(Right)
+
   let compute output_request =
     let l_request, r_request = Output.splitSet output_request in
     let l_result = PredLayerLeft.compute l_request in
     let r_result = PredLayerRight.compute r_request in
     Output.joinMap l_result r_result
 end
-
-
-
-let s = "a"
