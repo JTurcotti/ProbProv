@@ -164,32 +164,32 @@ struct
       Format.sprintf "Global(%s): %s" Args.logger_name s)
 
   let get_oc _ = 
-    open_out_gen [Open_append] 0o777 Args.filename
+    open_out_gen [Open_append] 0o666 Args.filename
 
   let log_string s =
     let oc = get_oc () in
     let ff = Format.formatter_of_out_channel oc in
-    Format.fprintf ff "%s:%s: %s\n" (time_str ()) Args.logger_name s;
+    Format.fprintf ff "%s:%s: %s@." (time_str ()) Args.logger_name s;
     close_out oc
 
   let log_point s t =
     let oc = get_oc () in
     let ff = Format.formatter_of_out_channel oc in
-    Format.fprintf ff "%s:%s: %s %a\n" (time_str ()) Args.logger_name
+    Format.fprintf ff "%s:%s: %s %a@." (time_str ()) Args.logger_name
       s MSFormat.fprint_elt t;
     close_out oc
 
   let log_set s st =
     let oc = get_oc () in
     let ff = Format.formatter_of_out_channel oc in
-    Format.fprintf ff "%s:%s: %s %a\n" (time_str ()) Args.logger_name
+    Format.fprintf ff "%s:%s: %s %a@." (time_str ()) Args.logger_name
       s MSFormat.fprint_set st;
     close_out oc
 
   let log_map s mp =
     let oc = get_oc () in
     let ff = Format.formatter_of_out_channel oc in
-    Format.fprintf ff "%s:%s: %s %a\n" (time_str ()) Args.logger_name
+    Format.fprintf ff "%s:%s: %s %a@." (time_str ()) Args.logger_name
       s MSFormat.fprint_map mp;
     close_out oc
 
