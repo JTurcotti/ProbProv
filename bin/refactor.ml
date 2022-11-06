@@ -324,18 +324,21 @@ struct
     let separate : DNF.t -> req_synth = fun dnf ->
       (* returns a synthesizer for a dependent conjunction *)
       let synth_dep_conj : DNF.iset -> req_synth = fun dep_conj ->
-        let pos_conj, _ = DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
-        (* now each of pos and neg contain sets of Derived types constant
+        let pos_conj, neg_conj = DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
+        if DNF.InnerSet.is_empty neg_conj then
+          (synth_var (D.lower_to_set pos_conj))
+        else
+          (* now each of pos and neg contain sets of Derived types constant
              over sign and index (the former by this parition and the latter
-           by the hash-splitting below) so we can erase those components
-           and transform each to a dependent event. The correct arithmetic
-           to compute the probability of the original is the difference
-           in probabilities of the full conjunction and the negative component *)
-        let full_dep, pos_dep = D.lower_to_set dep_conj, D.lower_to_set pos_conj in
-        (* this corresponds to ℙ(AB̄) = ℙ(A) - ℙ(AB) *)
-        synth_sub (synth_var pos_dep) (synth_var full_dep) in
+             by the hash-splitting below) so we can erase those components
+             and transform each to a dependent event. The correct arithmetic
+             to compute the probability of the original is the difference
+             in probabilities of the full conjunction and the negative component *)
+          let full_dep, pos_dep = D.lower_to_set dep_conj, D.lower_to_set pos_conj in
+          (* this corresponds to ℙ(AB̄) = ℙ(A) - ℙ(AB) *)
+          synth_sub (synth_var pos_dep) (synth_var full_dep) in
       
-        (* returns a synthesizer for an arbitrary conjunction by splitting
+      (* returns a synthesizer for an arbitrary conjunction by splitting
            it into dependent conjunctions *)
       let separate_conj : DNF.iset -> req_synth = fun conj ->
         let hashed_ev = DNF.InnerSet.fold (fun d hashed_ev ->
