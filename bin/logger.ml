@@ -202,13 +202,14 @@ end
 module Loggers =
 struct
   let dirname = "logs/"
-  let pi_log_file = dirname ^ "pi_log"
+  let pi_log_file = dirname ^ "pi_log_file"
   let phi_log_file = dirname ^ "phi_log_file"
   let beta_log_file = dirname ^ "beta_log_file"
   let eta_log_file = dirname ^ "eta_log_file"
   let omega_log_file = dirname ^ "omega_log_file"
 
-  let global_logger = ref (fun _ -> ())
+  exception DummyLoggerCalled
+  let global_logger = ref (fun _ -> raise DummyLoggerCalled)
   let global_log s = !global_logger s
 
   module PiLogger = BuildLayerLogger (Pi) (struct

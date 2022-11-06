@@ -194,7 +194,7 @@ struct
   let solve (Sys(vars, eqns)) (name : string) : float varMap = 
     let n_vars = VarSet.cardinal vars in
     let () = if not (n_vars > 0) then raise
-          (BadSystem "System needs at least 1 variable") else () in
+          (BadSystem (name ^ " system needs at least 1 variable")) else () in
     let vars_list = VarSet.elements vars in
         let vars_index, _ = List.fold_left (fun (mp, i) var ->
         (* NOTE: MATLAB arrays start at 1 *)
