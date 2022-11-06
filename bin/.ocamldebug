@@ -1,0 +1,10 @@
+load_printer logger.cmo
+
+install_printer fprint_label
+install_printer fprint_call_ret
+install_printer fprint_blame_source
+install_printer fprint_blame_target
+install_printer fprint_blame_flow
+install_printer fprint_blame_teleflow
+install_printer fprint_direct_blame_source
+install_printer fprint_direct_blame_flow
