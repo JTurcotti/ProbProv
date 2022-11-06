@@ -272,6 +272,7 @@ struct
   module PiComputationLayer = Layers.ConstantComputationLayer
       (Pi) (PiComputation)
       (Logger.Loggers.PiLogger)
+      (Pi)
 
   module PhiComputation =
   struct
@@ -306,6 +307,7 @@ struct
       (Pi) (Phi)
       (PiComputationLayer) (PhiComputation)
       (Logger.Loggers.PhiLogger)
+      (Phi)
 
   module BetaComputation =
   struct
@@ -342,6 +344,7 @@ struct
     Layers.DirectComputationLayer (Union(Pi)(Phi)) (Beta)
       (PiPhiAggregator) (BetaComputation)
       (Logger.Loggers.BetaLogger)
+      (Beta)
 
   module BetaEta =
   struct
@@ -507,6 +510,7 @@ struct
       (Beta) (Eta)
       (BetaComputationLayer) (EtaComputation)
       (Logger.Loggers.EtaLogger)
+      (Eta)
 
   module OmegaComputation =
   struct
@@ -548,6 +552,7 @@ struct
     Layers.DirectComputationLayer (Union(Beta)(Eta)) (Omega)
       (BetaEtaAggregator) (OmegaComputation)
       (Logger.Loggers.OmegaLogger)
+      (Omega)
 
   module Output = struct
     type programOmegas = POmegas of float OmegaMap.t

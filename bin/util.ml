@@ -44,6 +44,9 @@ struct
           Format.fprintf ff "%a" format_t el) st;
       first := old
     )
+
+  let lift_hash hash_elt t =
+    Hashtbl.hash (fold (fun el h -> h + hash_elt el) t 0)
 end
 
 module Map (T : T) =

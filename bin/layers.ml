@@ -1,5 +1,41 @@
 open Util
 
+let compute_count = ref 0
+let get_compute_count _ =
+  let count = !compute_count in
+  compute_count := count + 1;
+  count
+
+module ComputeLogger (T: T)
+    (Logger : Logger.LayerLogger
+     with module T = T)
+    (DeepHash : DeepHashT
+     with type t = T.t) =
+struct
+  module S = Set(T)
+  module M = Map(T)
+
+  let log_start request =
+    let count = get_compute_count () in
+    Logger.global_log_string (
+      Printf.sprintf
+        "[%d] CALLED: request %d of size %d"
+        count (S.lift_hash DeepHash.deep_hash request)
+        (S.cardinal request));
+    Logger.log_request request;
+    count
+    
+  let log_end count response =
+    let response_domain =
+      M.fold (fun k _ -> S.add k) response S.empty in
+    Logger.global_log_string (
+      Printf.sprintf
+        "[%d] COMPLETE: response domain %d of size %d"
+        count (S.lift_hash DeepHash.deep_hash response_domain)
+        (S.cardinal response_domain));
+    Logger.log_response response
+end
+
 (* A computation layer can serve a request of type outputSet,
    responding with the same set's keys each mapped to floats *)
 module type ComputationLayer =
@@ -22,7 +58,9 @@ module ConstantComputationLayer (Output : T)
     (Action : ConstantComputation
      with module Output = Output)
     (Logger : Logger.LayerLogger
-     with module T = Output) :
+     with module T = Output)
+    (DeepHash : DeepHashT
+     with type t = Output.t):
   (ComputationLayer 
    with module Output = Output) =
 struct
@@ -30,16 +68,16 @@ struct
   module OutputSet = Set(Output)
   module OutputMap = Map(Output)
 
+  module ComputeLogger = ComputeLogger(Output)(Logger)(DeepHash)
+
   let compute output_request =
-    Logger.global_log_string "Constant compute called";
-    Logger.log_request output_request;
+    let c = ComputeLogger.log_start output_request in
 
     let response = OutputSet.fold (fun output_point output_result ->
         OutputMap.add output_point (Action.compute Logger.log_string output_point)
           output_result) output_request OutputMap.empty in
 
-    Logger.global_log_string "Constant compute complete";
-    Logger.log_response response;
+    ComputeLogger.log_end c response;
     response
 end
 
@@ -70,7 +108,9 @@ module DirectComputationLayer
      with module Input = Input
      with module Output = Output)
     (Logger : Logger.LayerLogger
-     with module T = Output) :
+     with module T = Output)
+    (DeepHash : DeepHashT
+     with type t = Output.t):
   (ComputationLayer 
    with module Output = Output) = 
 struct
@@ -81,6 +121,8 @@ struct
   module OutputMap = Map(Output)
   module InputMap = Map(Input)
 
+  module ComputeLogger = ComputeLogger(Output)(Logger)(DeepHash)
+
   (*
      compute here calls Action.compute on each input point,
      accumulating the input requests as well as the plans for
@@ -90,9 +132,8 @@ struct
      to obtain the final results.
      *)
   let compute (output_request : OutputSet.t) =
-    Logger.global_log_string "Direct compute called";
-    Logger.log_request output_request;
-
+    let c = ComputeLogger.log_start output_request in
+    
     (* accumulate the needed inputs, and the desired outputs
        in terms of those inputs *)
     let input_request, output_plan =
@@ -109,8 +150,7 @@ struct
        now that the inputs have arrived *)
     let response = OutputMap.map (fun plan -> plan input_result) output_plan in
 
-    Logger.global_log_string "Direct compute complete";
-    Logger.log_response response;
+    ComputeLogger.log_end c response;
     response
 end
 
@@ -135,7 +175,9 @@ module IndirectComputationLayer
      with module Input = Input
      with module Output = Output)
     (Logger : Logger.LayerLogger
-     with module T = Output) :
+     with module T = Output)
+    (DeepHash : DeepHashT
+     with type t = Output.t):
   (ComputationLayer
    with module Output = Output) = 
 struct
@@ -156,6 +198,8 @@ struct
 
   type deferred_eqn_list = (float inputMap -> eqn) list
 
+  module ComputeLogger = ComputeLogger(Output)(Logger)(DeepHash)
+
   (* compute for an indirect computation is the most complex yet
      each output request generates a set of input requests, but also
      potentially more output requests.
@@ -165,9 +209,8 @@ struct
      compute the output values
   *)
   let compute (output_request : outputSet) : float outputMap =
-    Logger.global_log_string "Indirect compute called";
-    Logger.log_request output_request;
-
+    let c = ComputeLogger.log_start output_request in
+    
     let response = if OutputSet.is_empty output_request then OutputMap.empty else (    
         let rec process_output_request
             output_request prior_out_req prior_in_req prior_eqns
@@ -214,8 +257,7 @@ struct
             OutputSet.mem output_req output_request)
           (eqn_solve_result Name.name log)) in
 
-    Logger.global_log_string "Indirect compute complete";
-    Logger.log_response response;
+    ComputeLogger.log_end c response;
     response
 end
 

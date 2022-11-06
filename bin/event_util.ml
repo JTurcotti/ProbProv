@@ -60,8 +60,7 @@ struct
 
   let singleton = Set.singleton
 
-  let deep_hash t =
-    Set.fold (fun el h -> h + Hashtbl.hash el) t 0
+  let deep_hash : t -> int = Set.lift_hash Hashtbl.hash
 end
 
 (* though it should be the case that X ∨ X = X, don't try it for this implementation*)

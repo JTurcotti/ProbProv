@@ -173,7 +173,7 @@ struct
       tm.tm_hour tm.tm_min tm.tm_sec fracsecstrim
 
   let global_log_string s = Args.global_log_string (
-      Format.sprintf "Global(%s): %s" Args.logger_name s)
+      Format.sprintf "%s: %s" Args.logger_name s)
 
   let get_oc _ = 
     open_out_gen [Open_append] 0o666 Args.filename
