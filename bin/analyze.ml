@@ -1,43 +1,6 @@
 open Util
 open Event_util
-
-(**
-   This module defines the primitive types
-*)
-module BlamePrim =
-struct
-  open Expr
-
-  type call_event = {ce_func : func; ce_arg : arg; ce_ret : ret}
-
-  type blame_source =
-    | BlameLabel of label
-    | BlameCall of call * ret
-    | BlameArg of func * arg
-
-  type blame_target = {bt_func: func; bt_ret: ret}
-
-  (* these are the sites the type system identifies -
-     they include flows from a call to a return
-     through the body of a function
-     so the label, call, or arg of the source should be present in the
-     function of the target*)
-  type blame_flow = {bf_src: blame_source; bf_tgt: blame_target}
-
-  (* these are the flows that we need to figure out using equation solving - the flow from the
-     return of one function to the return of another via interprocedural calls *)
-  type blame_teleflow = {bt_src: blame_target; bt_tgt: blame_target}
-
-  type direct_blame_source =
-    | DBlameLabel of label
-    | DBlameArg of func * arg
-
-  (* these are a restricted version of the blame_flow type above - flows from calls to returns
-     are not included because we used computation of the teleflows to eliminate them *)
-  type direct_blame_flow = {dbf_src: direct_blame_source; dbf_tgt: blame_target}
-end
-
-open BlamePrim
+open Blame_prim
 
 exception OptionShouldntBeNoneHere
 let force_some =
@@ -130,7 +93,7 @@ struct
     Phi is the event that a function's result depends on its argument
 *)
   module Phi = DependentEv(struct
-      type t = BlamePrim.call_event
+      type t = Blame_prim.call_event
       type hash_t = Expr.func
       let hash ce = ce.ce_func
     end)
@@ -142,7 +105,7 @@ struct
    Beta is the event that an intraprocedural flow occurs
    *)
   module Beta = DependentEv(struct
-      type t = BlamePrim.blame_flow
+      type t = Blame_prim.blame_flow
       type hash_t = Expr.func
       let hash bf = bf.bf_tgt.bt_func
     end)
@@ -153,7 +116,7 @@ struct
    Eta is the event that a teleflow - from one func ret to another - occurs
    *)
   module Eta = DependentEv(struct
-      type t = BlamePrim.blame_teleflow
+      type t = Blame_prim.blame_teleflow
       type hash_t = Expr.func
       let hash bt = bt.bt_tgt.bt_func
     end)
@@ -165,7 +128,7 @@ struct
    Omega is the event that a possibly interprocedural flow occurs
    *)
   module Omega = DependentEv(struct
-      type t = BlamePrim.direct_blame_flow
+      type t = Blame_prim.direct_blame_flow
       type hash_t = Expr.func
       let hash dbf = dbf.dbf_tgt.bt_func
     end)
@@ -303,7 +266,9 @@ struct
     let compute pi = pow 0.5 (Pi.Set.cardinal pi)
   end
 
-  module PiComputationLayer = Layers.ConstantComputationLayer (Pi) (PiComputation)
+  module PiComputationLayer = Layers.ConstantComputationLayer
+      (Pi) (PiComputation)
+      (Logger.Loggers.PiLogger)
 
   module PhiComputation =
   struct
@@ -333,6 +298,7 @@ struct
       (struct let name = "phi_computation" end)
       (Pi) (Phi)
       (PiComputationLayer) (PhiComputation)
+      (Logger.Loggers.PhiLogger)
 
   module BetaComputation =
   struct
@@ -363,6 +329,7 @@ struct
   module BetaComputationLayer =
     Layers.DirectComputationLayer (Union(Pi)(Phi)) (Beta)
       (PiPhiAggregator) (BetaComputation)
+      (Logger.Loggers.BetaLogger)
 
   module BetaEta =
   struct
@@ -516,6 +483,7 @@ struct
       (struct let name = "eta_computation" end)
       (Beta) (Eta)
       (BetaComputationLayer) (EtaComputation)
+      (Logger.Loggers.EtaLogger)
 
   module OmegaComputation =
   struct
@@ -550,6 +518,7 @@ struct
   module OmegaComputationLayer =
     Layers.DirectComputationLayer (Union(Beta)(Eta)) (Omega)
       (BetaEtaAggregator) (OmegaComputation)
+      (Logger.Loggers.OmegaLogger)
 
   module Output = struct
     type programOmegas = POmegas of float OmegaMap.t
@@ -566,14 +535,14 @@ struct
               List.fold_right (fun arg omegas ->
                   OmegaSet.add
                     (Omega.singleton {
-                        dbf_src=BlamePrim.DBlameArg (fdecl.name, arg);
+                        dbf_src=Blame_prim.DBlameArg (fdecl.name, arg);
                         dbf_tgt=tgt})
                     omegas
                 ) fdecl.params
                 (LabelSet.fold (fun l omegas ->
                      OmegaSet.add
                        (Omega.singleton {
-                           dbf_src=BlamePrim.DBlameLabel l;
+                           dbf_src=Blame_prim.DBlameLabel l;
                            dbf_tgt=tgt})
                        omegas
                    ) fdecl_labels omegas)

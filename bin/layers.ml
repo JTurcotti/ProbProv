@@ -20,7 +20,9 @@ end
 
 module ConstantComputationLayer (Output : T)
     (Action : ConstantComputation
-     with module Output = Output) :
+     with module Output = Output)
+    (Logger : Logger.LayerLogger
+     with module T = Output) :
   (ComputationLayer 
    with module Output = Output) =
 struct
@@ -29,9 +31,16 @@ struct
   module OutputMap = Map(Output)
   
   let compute output_request =
-    OutputSet.fold (fun output_point output_result ->
+    Logger.global_log_string "Constant compute called";
+    Logger.log_request output_request;
+    
+    let response = OutputSet.fold (fun output_point output_result ->
         OutputMap.add output_point (Action.compute output_point)
-          output_result) output_request OutputMap.empty
+          output_result) output_request OutputMap.empty in
+
+    Logger.global_log_string "Constant compute complete";
+    Logger.log_response response;
+    response
 end
 
 module type DirectComputation =
@@ -59,7 +68,9 @@ module DirectComputationLayer
      with module Output = Input)
     (Action : DirectComputation
      with module Input = Input
-     with module Output = Output) :
+     with module Output = Output)
+    (Logger : Logger.LayerLogger
+     with module T = Output) :
   (ComputationLayer 
    with module Output = Output) = 
 struct
@@ -79,6 +90,9 @@ struct
      to obtain the final results.
      *)
   let compute (output_request : OutputSet.t) =
+    Logger.global_log_string "Direct compute called";
+    Logger.log_request output_request;
+    
     (* accumulate the needed inputs, and the desired outputs
        in terms of those inputs *)
     let input_request, output_plan =
@@ -93,7 +107,11 @@ struct
 
     (* compute the concrete values of the needed outputs
        now that the inputs have arrived *)
-    OutputMap.map (fun plan -> plan input_result) output_plan
+    let response = OutputMap.map (fun plan -> plan input_result) output_plan in
+
+    Logger.global_log_string "Direct compute complete";
+    Logger.log_response response;
+    response
 end
 
 
@@ -115,7 +133,9 @@ module IndirectComputationLayer
      with module Output = Input)
     (Action : IndirectComputation
      with module Input = Input
-     with module Output = Output) :
+     with module Output = Output)
+    (Logger : Logger.LayerLogger
+     with module T = Output) :
   (ComputationLayer
    with module Output = Output) = 
 struct
@@ -145,6 +165,10 @@ struct
      compute the output values
   *)
   let compute (output_request : outputSet) : float outputMap =
+    Logger.global_log_string "Indirect compute called";
+    Logger.log_request output_request;
+
+    
     (* given that we have already determined the need for
        output points `prior_out_req`, input points `prior_in_req`, and
        equations `prior_eqns`, update those values to reflect the new
@@ -179,8 +203,12 @@ struct
     let eqn_solve_result = EqnSolver.solve eqns in
 
     (* return a mapping containing only the originally requested outputs *)
-    OutputMap.filter (fun output_req _ ->
-        OutputSet.mem output_req output_request) (eqn_solve_result Name.name)
+    let response = OutputMap.filter (fun output_req _ ->
+        OutputSet.mem output_req output_request) (eqn_solve_result Name.name) in
+
+    Logger.global_log_string "Indirect compute complete";
+    Logger.log_response response;
+    response
 end
 
 module AggregatorLayer

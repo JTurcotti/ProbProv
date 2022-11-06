@@ -42,9 +42,10 @@ fprintf('%s');|}
 
     n_vars eqns_repr start_token sol_fmt mid_token val_fmt end_token
 
-let output_scriptname name = "ocaml_matlab_eqn__" ^ name
-let output_filename name = Printf.sprintf "%s.m" (output_scriptname name)
-let result_filename name = "ocaml_matlab_eqn_out__" ^ name
+let dirname = "computation/"
+let output_scriptname name = dirname ^ "ocaml_matlab_eqn__" ^ name
+let output_filename name = Printf.sprintf "%s%s.m" dirname (output_scriptname name)
+let result_filename name = dirname ^ "ocaml_matlab_eqn_out__" ^ name
 
 let matlab_runcmd name = Printf.sprintf
     {|matlab -nojvm -batch "%s" > %s|}
@@ -183,6 +184,7 @@ struct
     sols
       
   exception SolveFailure of string
+  exception BadSystem of string
 
   (** given a system set up with the equations eqns and the variables vars
       (though theoretically vars could be computed from eqns), solve it!
@@ -191,8 +193,10 @@ struct
   *)
   let solve (Sys(vars, eqns)) (name : string) : float varMap = 
     let n_vars = VarSet.cardinal vars in
+    let () = if not (n_vars > 0) then raise
+          (BadSystem "System needs at least 1 variable") else () in
     let vars_list = VarSet.elements vars in
-    let vars_index, _ = List.fold_left (fun (mp, i) var ->
+        let vars_index, _ = List.fold_left (fun (mp, i) var ->
         (* NOTE: MATLAB arrays start at 1 *)
         (VarMap.add var i mp , i + 1)) (VarMap.empty, 1) vars_list in
     let var_i v = VarMap.find v vars_index in

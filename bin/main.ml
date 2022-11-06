@@ -34,11 +34,12 @@ let typechecked_prog = (Typecheck.typecheck_program program)
 let _ = print_endline (Context_repr.typechecked_program_repr
                          typechecked_prog)
 
-module PA = Analyze.ProgramAnalyzer (struct
+include Analyze.ProgramAnalyzer (struct
     type t = Typecheck.typechecked_program
     let get _ = typechecked_prog
   end)
-let _ = PA.Output.getProgramBlame (fun _ -> true)
+    
+let _ = Output.getProgramBlame (fun _ -> true)
   
 
 (*
