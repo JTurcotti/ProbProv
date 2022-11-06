@@ -557,8 +557,12 @@ struct
     *)
     let getAllProgOmegas _ = Expr.(
         let prog = get_program () in
+        let all_labels = FuncMap.fold (fun _ (fdecl, ctxt_opt) ->
+            match ctxt_opt with
+            | None -> id
+            | Some _ -> LabelSet.union (expr_labels fdecl.body))
+            prog LabelSet.empty in
         let fdecl_omegas fdecl =
-          let fdecl_labels = expr_labels fdecl.body in
           List.fold_right (fun ret omegas ->
               let tgt = {bt_func=fdecl.name; bt_ret=ret} in
               List.fold_right (fun arg omegas ->
@@ -574,7 +578,7 @@ struct
                            dbf_src=Blame_prim.DBlameLabel l;
                            dbf_tgt=tgt})
                        omegas
-                   ) fdecl_labels omegas)
+                   ) all_labels omegas)
             ) fdecl.results OmegaSet.empty in
         FuncMap.fold (fun _ (fdecl, ctxt_opt) omegas ->
             match ctxt_opt with

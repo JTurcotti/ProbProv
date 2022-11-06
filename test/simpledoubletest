@@ -1,0 +1,24 @@
+def foo(x) -> y {
+    if 0 {
+        if 0 {
+            y = x
+        } else {
+            y = 0
+        }
+    } else {
+        y = bar(x - 1)
+    }
+}
+        
+def bar(x) -> y {
+    if 0 {
+        if 0 {
+            y = x
+        } else {
+            y = 0
+        }
+    } else {
+        y = foo(x - 1)
+    }
+}
+        
