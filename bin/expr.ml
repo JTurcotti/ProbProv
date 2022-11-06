@@ -11,6 +11,12 @@ let local_to_string (Local s) = s
 type arg = Arg of int * string
 type ret = Ret of int * string
 
+module ArgT = struct type t = arg end
+module RetT = struct type t = ret end
+
+module ArgMap = Map(ArgT)
+module RetMap = Map(RetT)
+
 (* the ints in each of these are unique identifiers *)
 type branch = Branch of int
 type label = Label of int

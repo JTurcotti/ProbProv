@@ -1,7 +1,8 @@
 (**
-   This module defines the primitive types
+   This module defines the primitive types for interprocedural program analysis
 *)
 open Expr
+open Util
 
 type call_event = {ce_func : func; ce_arg : arg; ce_ret : ret}
 
@@ -30,3 +31,6 @@ type direct_blame_source =
 (* these are a restricted version of the blame_flow type above - flows from calls to returns
    are not included because we used computation of the teleflows to eliminate them *)
 type direct_blame_flow = {dbf_src: direct_blame_source; dbf_tgt: blame_target}
+
+
+module DBSMap = Map(struct type t = direct_blame_source end)

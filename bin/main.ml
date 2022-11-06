@@ -39,7 +39,8 @@ include Analyze.ProgramAnalyzer (struct
     let get _ = typechecked_prog
   end)
     
-let _ = Output.getProgramBlame (fun _ -> true)
+let computed_omegas = Output.get_program_blame (fun _ -> true)
+let _ = Output.format_program_blame Format.std_formatter computed_omegas
   
 
 (*

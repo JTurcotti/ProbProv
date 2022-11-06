@@ -560,7 +560,7 @@ struct
     (* messy function, aggregates all direct blame flows for a program
        including from args to rets and labels to rets
     *)
-    let getAllProgOmegas _ = Expr.(
+    let get_all_prog_omegas _ = Expr.(
         let prog = get_program () in
         let all_labels = FuncMap.fold (fun _ (fdecl, ctxt_opt) ->
             match ctxt_opt with
@@ -598,9 +598,61 @@ struct
        returns a map from all direct blame flows (i.e. omegas) to probabilities
        optionally can pass a filter to only get for some blame flows
     *)
-    let getProgramBlame filter =
+    let get_program_blame filter =
       POmegas (OmegaComputationLayer.compute (
-          OmegaSet.filter filter (getAllProgOmegas())
+          OmegaSet.filter filter (get_all_prog_omegas())
         ))
+
+    exception NonSingletonOmegaResponse
+    exception OmegaResponseCrossFunctionBlame
+
+    let format_program_blame ff (POmegas mp) =
+      let organized_mp = OmegaMap.fold (fun omega v ->
+          if Omega.Set.cardinal omega != 1 then raise NonSingletonOmegaResponse else
+            let dbf = Omega.Set.choose omega in
+            Expr.FuncMap.update dbf.dbf_tgt.bt_func (
+              function
+              | None -> Some (
+                  Expr.RetMap.singleton
+                    dbf.dbf_tgt.bt_ret
+                    (Blame_prim.DBSMap.singleton dbf.dbf_src v)
+                )
+              | Some rm -> Some (
+                  Expr.RetMap.update dbf.dbf_tgt.bt_ret (
+                    function
+                    | None -> Some (Blame_prim.DBSMap.singleton dbf.dbf_src v)
+                    | Some dbsm -> Some (Blame_prim.DBSMap.add dbf.dbf_src v dbsm)
+                  ) rm
+                )
+            )
+        ) mp Expr.FuncMap.empty in
+      let format_dbs ff (func, dbs) =
+        match dbs with
+        | Blame_prim.DBlameLabel (Label i) ->
+          Format.fprintf ff "ℓ%s" (Expr_repr.int_subscript_repr i)
+        | Blame_prim.DBlameArg (Func f_s, Arg(i, a_s)) ->
+          if f_s <> func then raise OmegaResponseCrossFunctionBlame else
+            Format.fprintf ff "%s:α%s" a_s (Expr_repr.int_subscript_repr i)
+      in
+      let format_dbs_map ff (func, dbsm) =
+        Blame_prim.DBSMap.iter (
+          fun dbs v ->
+            Format.fprintf ff "\n│       ├─⟨%a ↦ %f"
+              format_dbs (func, dbs) v
+        ) dbsm
+      in
+      let format_rm ff (func, rm) =
+        Expr.RetMap.iter (
+          fun (Expr.Ret (i, s)) dbsm ->
+            Format.fprintf ff {|├───────┬─result %d "%s":%a|}
+              i s format_dbs_map (func, dbsm)
+        ) rm
+      in
+      Expr.FuncMap.iter (
+        fun (Expr.Func func) rm ->
+          Format.fprintf ff
+            "Omegas for function %s:\n%a\n└───────╼\n"
+            func format_rm (func, rm)
+      ) organized_mp
   end
 end
