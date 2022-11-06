@@ -115,8 +115,8 @@ struct
       match (LSet.is_empty candidate_left, RSet.is_empty candidate_right) with
       | true, true -> Left (candidate_left) (*arbitrary_choice *)
       | false, false -> raise DependentEvNotDependent (*badly constructed*)
-      | true, false -> Left (candidate_left)
-      | false, true -> Right (candidate_right)
+      | true, false -> Right (candidate_right)
+      | false, true -> Left (candidate_left)
 
     module DepLRSet = Set(DepEvLR)
     module LRUnionSet = Set(LRUnion)
