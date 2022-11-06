@@ -46,7 +46,7 @@ let fprint_label ff : label -> unit = fun (Label i) ->
   Format.fprintf ff "ℓ%s" (int_subscript_repr i)
 
 let fprint_call_ret ff (Call(Func(f_s), c_i), Ret(r_i, _)) =
-  Format.fprintf ff "ϕ⟨%s%s⟩ᵣ%s" f_s (int_subscript_repr c_i)
+  Format.fprintf ff "⟨%s%s⟩ᵣ%s" f_s (int_subscript_repr c_i)
     (int_subscript_repr r_i)
 let fprint_func_arg ff (Func f_s, Arg(i, _)) =
   Format.fprintf ff "%sₐ%s" f_s (int_subscript_repr i)
