@@ -59,6 +59,9 @@ struct
     if verify_dep de then () else raise NotDependent
 
   let singleton = Set.singleton
+
+  let deep_hash t =
+    Set.fold (fun el h -> h + Hashtbl.hash el) t 0
 end
 
 (* though it should be the case that X ∨ X = X, don't try it for this implementation*)

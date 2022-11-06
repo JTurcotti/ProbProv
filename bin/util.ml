@@ -2,6 +2,12 @@ let compose f g x = g (f x)
 let id x = x
 
 
+module type DeepHashT =
+sig
+  type t
+  val deep_hash : t -> int
+end
+
 module type T = sig type t end
 
 module Ord (T : T) = struct
