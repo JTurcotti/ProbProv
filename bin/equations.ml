@@ -43,7 +43,7 @@ fprintf('%s');|}
 
 let dirname = "computation/"
 let output_scriptname name = "ocaml_matlab_eqn__" ^ name
-let output_filename name = Printf.sprintf "%s.m" (output_scriptname name)
+let output_filename name = Printf.sprintf "%s%s.m" dirname (output_scriptname name)
 let result_filename name = dirname ^ "ocaml_matlab_eqn_out__" ^ name
 
 let matlab_runcmd name = Printf.sprintf
