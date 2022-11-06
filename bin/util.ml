@@ -82,6 +82,12 @@ struct
     LMap.fold (fun l v umap -> UMap.add (Left l) v umap) lmap
       (RMap.fold (fun r v umap -> UMap.add (Right r) v umap) rmap UMap.empty)
 
+  let lift_format l_format r_format : Format.formatter -> T.t -> unit =
+    fun ff ->
+    function
+    | Left l -> l_format ff l
+    | Right r -> r_format ff r
+
   include T
 end
 
@@ -110,10 +116,6 @@ end
 
 let unicode_bar = "\u{0305}"
 let unicode_bar_cond b = if b then "" else unicode_bar
-
-let unicode_bar_str =
-  String.fold_left (fun prefix c -> Format.sprintf "%s%c%s" prefix c unicode_bar) ""
-let unicode_bar_str_cond b = if b then id else unicode_bar_str 
 
 module type Arithmetic =
 sig

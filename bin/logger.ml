@@ -46,7 +46,7 @@ let fprint_label ff : label -> unit = fun (Label i) ->
   Format.fprintf ff "ℓ%s" (int_subscript_repr i)
 
 let fprint_call_ret ff (Call(Func(f_s), c_i), Ret(r_i, _)) =
-  Format.fprintf ff "⟨%s%s⟩ᵣ%s" f_s (int_subscript_repr c_i)
+  Format.fprintf ff "ϕ⟨%s%s⟩ᵣ%s" f_s (int_subscript_repr c_i)
     (int_subscript_repr r_i)
 let fprint_func_arg ff (Func f_s, Arg(i, _)) =
   Format.fprintf ff "%sₐ%s" f_s (int_subscript_repr i)
@@ -63,11 +63,11 @@ let fprint_blame_target ff : blame_target -> unit =
 
 let fprint_blame_flow ff : blame_flow -> unit =
   fun {bf_src=src; bf_tgt=tgt} ->
-  Format.fprintf ff "(%a↦%a)" fprint_blame_source src fprint_blame_target tgt
+  Format.fprintf ff "β(%a↦%a)" fprint_blame_source src fprint_blame_target tgt
 
 let fprint_blame_teleflow ff : blame_teleflow -> unit =
   fun {bt_src=src; bt_tgt=tgt} ->
-  Format.fprintf ff "(%a↦%a)" fprint_blame_target src fprint_blame_target tgt
+  Format.fprintf ff "η(%a↦%a)" fprint_blame_target src fprint_blame_target tgt
 
 let fprint_direct_blame_source ff : direct_blame_source -> unit =
   function
@@ -76,7 +76,7 @@ let fprint_direct_blame_source ff : direct_blame_source -> unit =
 
 let fprint_direct_blame_flow ff : direct_blame_flow -> unit =
   fun {dbf_src=src; dbf_tgt=tgt} ->
-  Format.fprintf ff "(%a↦%a)"
+  Format.fprintf ff "ω(%a↦%a)"
     fprint_direct_blame_source src
     fprint_blame_target tgt
 

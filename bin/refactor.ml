@@ -235,8 +235,7 @@ struct
       Format.formatter -> t -> unit =
       fun ff {el=el; ind=ind; sgn=sgn} ->
       Format.fprintf ff "%s" (
-        unicode_bar_str_cond sgn
-          (Format.asprintf "⟨%a⟩%s" t_format el
+          (Format.asprintf "⟦%c%a⟧%s" (if sgn then '+' else '-') t_format el
              (Expr_repr.int_subscript_repr ind)))
   end
   
