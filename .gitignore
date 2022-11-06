@@ -1,3 +1,12 @@
 *~
 _build
 *#
+*.cmo
+*.cmi
+main
+a.out
+lexer.ml
+parser.ml
+playground.ml
+test/logs/
+test/computation/
