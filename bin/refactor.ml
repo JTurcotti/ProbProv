@@ -324,16 +324,16 @@ struct
     let separate : DNF.t -> req_synth = fun dnf ->
       (* returns a synthesizer for a dependent conjunction *)
       let synth_dep_conj : DNF.iset -> req_synth = fun dep_conj ->
-        let _, neg_conj = DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
+        let pos_conj, _ = DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
         (* now each of pos and neg contain sets of Derived types constant
              over sign and index (the former by this parition and the latter
            by the hash-splitting below) so we can erase those components
            and transform each to a dependent event. The correct arithmetic
            to compute the probability of the original is the difference
            in probabilities of the full conjunction and the negative component *)
-        let full_dep, neg_dep = D.lower_to_set dep_conj, D.lower_to_set neg_conj in
+        let full_dep, pos_dep = D.lower_to_set dep_conj, D.lower_to_set pos_conj in
         (* this corresponds to ℙ(AB̄) = ℙ(A) - ℙ(AB) *)
-        synth_sub (synth_var full_dep) (synth_var neg_dep) in
+        synth_sub (synth_var pos_dep) (synth_var full_dep) in
       
         (* returns a synthesizer for an arbitrary conjunction by splitting
            it into dependent conjunctions *)
