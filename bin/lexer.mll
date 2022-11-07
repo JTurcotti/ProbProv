@@ -15,7 +15,7 @@ rule token = parse
      |	'}' {RBRACE}
      |	',' {COMMA}
      |  ['+''-''*''/''>''<'] | "<=" | ">="
-     | "==" | "!=" | "||" | "&&" {
+     | "==" | "!=" | "||" | "&&" | "%" {
        BINOP(Lexing.lexeme_start lexbuf, Lexing.lexeme_end lexbuf)
        }
      |	'!' {
