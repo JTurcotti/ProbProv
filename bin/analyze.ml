@@ -557,7 +557,7 @@ struct
       (Omega)
 
   module Output = struct
-    type programOmegas = POmegas of float OmegaMap.t
+    type program_omegas = POmegas of float OmegaMap.t
 
     (* messy function, aggregates all direct blame flows for a program
        including from args to rets and labels to rets
@@ -608,8 +608,13 @@ struct
     exception NonSingletonOmegaResponse
     exception OmegaResponseCrossFunctionBlame
 
-    let format_program_blame ff (POmegas mp) =
-      let organized_mp = OmegaMap.fold (fun omega v ->
+    open Blame_prim
+
+    type sorted_omegas = ((float DBSMap.t) Expr.RetMap.t) Expr.FuncMap.t
+
+    let sort_omegas : program_omegas -> sorted_omegas =
+      fun (POmegas mp) ->
+      OmegaMap.fold (fun omega v ->
           if Omega.Set.cardinal omega != 1 then raise NonSingletonOmegaResponse else
             let dbf = Omega.Set.choose omega in
             Expr.FuncMap.update dbf.dbf_tgt.bt_func (
@@ -617,30 +622,55 @@ struct
               | None -> Some (
                   Expr.RetMap.singleton
                     dbf.dbf_tgt.bt_ret
-                    (Blame_prim.DBSMap.singleton dbf.dbf_src v)
+                    (DBSMap.singleton dbf.dbf_src v)
                 )
               | Some rm -> Some (
                   Expr.RetMap.update dbf.dbf_tgt.bt_ret (
                     function
-                    | None -> Some (Blame_prim.DBSMap.singleton dbf.dbf_src v)
-                    | Some dbsm -> Some (Blame_prim.DBSMap.add dbf.dbf_src v dbsm)
+                    | None -> Some (DBSMap.singleton dbf.dbf_src v)
+                    | Some dbsm -> Some (DBSMap.add dbf.dbf_src v dbsm)
                   ) rm
                 )
             )
-        ) mp Expr.FuncMap.empty in
+        ) mp Expr.FuncMap.empty
+
+    let format_rgb_char ff (r, g, b) c =
+      Format.fprintf ff "\027[1m\027[38;2;%d;%d;%dm%c\027[0m" r g b c
+
+    let format_rgb_float ff (r, g, b) f =
+      Format.fprintf ff "\027[38;2;%d;%d;%dm%f\027[0m" r g b f
+        
+    let format_plain_char ff c =
+      Format.fprintf ff "%c" c
+        
+    let scale_heat_color vl =
+      let r, g, b = 0xff, 0x30, 0x30 in
+      let scale i =
+        Float.to_int (255. -. vl *. (255. -. (Float.of_int i))) in
+      (scale r, scale g, scale b)
+      
+    let format_by_float ff vl c =
+      format_rgb_char ff (scale_heat_color vl) c
+
+    let format_float_by_float ff vl =
+      format_rgb_float ff (scale_heat_color vl) vl
+
+
+    let format_program_blame ff omegas =
+      let sorted_omegas = sort_omegas omegas in
       let format_dbs ff (func, dbs) =
         match dbs with
-        | Blame_prim.DBlameLabel (Label i) ->
+        | DBlameLabel (Label i) ->
           Format.fprintf ff "ℓ%s" (Expr_repr.int_subscript_repr i)
-        | Blame_prim.DBlameArg (Func f_s, Arg(i, a_s)) ->
+        | DBlameArg (Func f_s, Arg(i, a_s)) ->
           if f_s <> func then raise OmegaResponseCrossFunctionBlame else
             Format.fprintf ff "%s:α%s" a_s (Expr_repr.int_subscript_repr i)
       in
       let format_dbs_map ff (func, dbsm) =
-        Blame_prim.DBSMap.iter (
+        DBSMap.iter (
           fun dbs v ->
-            Format.fprintf ff "\n│       ├─⟨%a ↦ %f"
-              format_dbs (func, dbs) v
+            Format.fprintf ff "\n│       ├─⟨%a ↦ %a"
+              format_dbs (func, dbs) format_float_by_float v
         ) dbsm
       in
       let format_rm ff (func, rm) =
@@ -655,40 +685,70 @@ struct
           Format.fprintf ff
             "\nOmegas for function %s:\n%a└───────╼\n"
             func format_rm (func, rm)
-      ) organized_mp
+      ) sorted_omegas
 
     module VeryPrettyPrint =
     struct
-      let format_rgb ff r g b c =
-        Format.fprintf ff "\027[38;2;%d;%d;%dm%c\027[0m" r g b c
+      let format_program ff input_file
+          (tprog : Typecheck.typechecked_program) omegas =
 
-      let format_program ff input_file (tprog : Typecheck.typechecked_program) =
-        let format_char i c =
-          match
-            Expr.IntMap.find_opt i tprog.label_tbl,
-            Expr.IntMap.find_opt i tprog.arg_tbl,
-            Expr.IntMap.find_opt i tprog.ret_tbl
-          with
-          | Some _, _, _ ->
-            (* it's labelled *)
-            format_rgb ff 0 0 255 c
-          | None, Some _, _ ->
-            (* it's an arg *)
-            format_rgb ff 255 0 0 c
-          | None, None, Some _ ->
-            format_rgb ff 0 255 0 c
-          | None, None, None ->
-            Format.fprintf ff "%c" c in
-        let char_num = ref 0 in
-        let get_char _ = let i = !char_num in char_num := i + 1; i in
-        let ic = open_in input_file in
-        Format.fprintf ff "\n";
-        try
-          while true do
-            let c = input_char ic in
-            format_char (get_char ()) c
-          done
-        with End_of_file -> ()
+        let format_func_ret func ret dbsm = (
+          
+          let format_func_ret_dbs ff dbs =
+            format_by_float ff (
+              match DBSMap.find_opt dbs dbsm with
+              | None -> 0.0
+              | Some vl -> vl
+            ) in
+
+          let format_func_ret_label ff l =
+            format_func_ret_dbs ff (DBlameLabel l) in
+
+          let format_func_ret_arg ff (func, arg) =
+            format_func_ret_dbs ff (DBlameArg (func, arg)) in
+
+          let format_func_ret_ret ff (func2, ret2) =
+              if (func2, ret2) = (func, ret) then            
+                format_rgb_char ff (0, 255, 0) else
+                format_plain_char ff in
+
+          let format_char i c =
+            if c = '\n' then Format.fprintf ff "\n│  " else
+            match
+              Expr.IntMap.find_opt i tprog.label_tbl,
+              Expr.IntMap.find_opt i tprog.arg_tbl,
+              Expr.IntMap.find_opt i tprog.ret_tbl
+            with
+            | Some l, _, _ ->
+              (* it's labelled *)
+              format_func_ret_label ff l c
+            | None, Some fa, _ ->
+              (* it's an arg *)
+              format_func_ret_arg ff fa c
+            | None, None, Some fr ->
+              (* it's a ret *)
+              format_func_ret_ret ff fr c
+            | None, None, None ->
+              format_plain_char ff c in
+          let char_num = ref 0 in
+          let get_char _ = let i = !char_num in char_num := i + 1; i in
+          let ic = open_in input_file in
+          Format.fprintf ff "\n";
+          let () = match func, ret with Func f, Ret(i, s) -> (
+              Format.fprintf ff
+                "┌─╼ Blame Map for '%s', result %d '%s' \n│  \n│  "
+                f i s) in
+          let () = try
+            while true do
+              let c = input_char ic in
+              format_char (get_char ()) c
+            done;
+            with End_of_file -> () in
+          Format.fprintf ff
+            "\n└───────────────────────╼\n") in
+        let sorted_omegas = sort_omegas omegas in
+        Expr.FuncMap.iter (
+          fun func -> Expr.RetMap.iter (format_func_ret func)) sorted_omegas
     end
   end
 end

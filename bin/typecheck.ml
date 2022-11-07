@@ -210,8 +210,8 @@ let typecheck_fdecl prog fdecl : context option =
     
 type typechecked_program = {tfunc_tbl: (fdecl * context option) FuncMap.t;
                             label_tbl: label IntMap.t;
-                            arg_tbl: arg IntMap.t;
-                            ret_tbl: ret IntMap.t}
+                            arg_tbl: (func * arg) IntMap.t;
+                            ret_tbl: (func * ret) IntMap.t}
 
 let typecheck_program p : typechecked_program =
   {tfunc_tbl=FuncMap.map (fun fdecl ->

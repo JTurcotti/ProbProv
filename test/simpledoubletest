@@ -21,4 +21,3 @@ def bar(x) -> y {
         y = foo(x - 1)
     }
 }
-        

@@ -71,8 +71,8 @@ module FuncMap = Map(Func)
 module IntMap = Map(Int)
 type program = {func_tbl: fdecl FuncMap.t;
                 label_tbl: label IntMap.t;
-                arg_tbl: arg IntMap.t;
-                ret_tbl: ret IntMap.t}
+                arg_tbl: (func * arg) IntMap.t;
+                ret_tbl: (func * ret) IntMap.t}
 
 let lookup_func_opt f prog : fdecl option =
   FuncMap.find_opt f prog.func_tbl
@@ -114,7 +114,7 @@ let label_prog raw_prog =
       let update_tbl s e tbl v =
         for i = s to e - 1 do
           tbl := IntMap.add i v !tbl
-        done; v in
+        done in
       let inc_counter wrap_i c _ =
         let () = c := !c + 1 in
         wrap_i (!c - 1) in
@@ -122,13 +122,15 @@ let label_prog raw_prog =
         inc_counter (fun i -> Branch i) branch_counter () in
       let next_label s_pos e_pos  =
         let l = inc_counter (fun i -> Label i) label_counter () in
-        update_tbl s_pos e_pos label_tbl l in
+        update_tbl s_pos e_pos label_tbl l; l in
       let next_call f =
         inc_counter (fun i -> Call(f, i)) call_counter () in
-      let get_arg i s s_pos e_pos =
-        update_tbl s_pos e_pos arg_tbl (Arg(i, s)) in
-      let get_ret i s s_pos e_pos =
-        update_tbl s_pos e_pos ret_tbl (Ret(i, s)) in
+      let get_arg i s s_pos e_pos fname =
+        let a = Arg(i, s) in
+        update_tbl s_pos e_pos arg_tbl (fname, a); a in
+      let get_ret i s s_pos e_pos fname =
+        let r = Ret(i, s) in
+        update_tbl s_pos e_pos ret_tbl (fname, r); r in
       
       let rec label_aexp {data=raw_aexp; start_pos=s_pos; end_pos=e_pos} =
         match raw_aexp with
@@ -164,14 +166,14 @@ let label_prog raw_prog =
           ((transformer i s) :: out, i - 1)) list ([], List.length list - 1) in out
     in
     let label_fdecl raw_fdecl =
-      let name = Func(raw_fdecl.raw_name) in
+      let fname = Func(raw_fdecl.raw_name) in
       {
-        name = name;
+        name = fname;
         params = wrap_fold raw_fdecl.raw_params
-            (fun i (name, s_pos, e_pos)  -> get_arg i name s_pos e_pos);
+            (fun i (name, s_pos, e_pos)  -> get_arg i name s_pos e_pos fname);
         num_params = List.length raw_fdecl.raw_params;
         results = wrap_fold raw_fdecl.raw_results
-            (fun i (name, s_pos, e_pos) -> get_ret i name s_pos e_pos);
+            (fun i (name, s_pos, e_pos) -> get_ret i name s_pos e_pos fname);
         num_results = List.length raw_fdecl.raw_results;
         body = label_expr raw_fdecl.raw_body;
       }

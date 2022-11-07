@@ -29,9 +29,9 @@ let program = IO.(try
                   with Lexer.FAIL ->
                     exit 1)
 
-let _ = print_endline (Expr_repr.program_string program)
+let () = print_endline (Expr_repr.program_string program)
 let typechecked_prog = (Typecheck.typecheck_program program)
-let _ = print_endline (Context_repr.typechecked_program_repr
+let () = print_endline (Context_repr.typechecked_program_repr
                          typechecked_prog)
 
 include Analyze.ProgramAnalyzer (struct
@@ -40,14 +40,15 @@ include Analyze.ProgramAnalyzer (struct
   end)
 
 
-let _ = Output.VeryPrettyPrint.format_program Format.std_formatter
-    !IO.input_file typechecked_prog
-
 (*let rgb_control r g b =
   Format.sprintf "\027[38;2;%d;%d;%dm" r g b*)
     
 let computed_omegas = Output.get_program_blame (fun _ -> true)
-let _ = Format.fprintf Format.std_formatter
+
+let () = Output.VeryPrettyPrint.format_program Format.std_formatter
+    !IO.input_file typechecked_prog computed_omegas
+
+let () = Format.fprintf Format.std_formatter
     "%a" Output.format_program_blame computed_omegas
   
 
