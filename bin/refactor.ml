@@ -29,6 +29,10 @@ sig
 
   val add: elt -> t -> t
 
+  val cardinal: t -> int
+
+  val choose: t -> elt
+
   (* be careful with this - definition should correspond to event implication *)
   val subset: t -> t -> bool
 
@@ -128,6 +132,10 @@ struct
 
   let zero = OuterSet.empty
   let one = OuterSet.singleton (InnerSet.empty)
+
+  let is_zero = OuterSet.is_empty
+  let is_one dnf = OuterSet.cardinal dnf = 1 &&
+                   InnerSet.is_empty (OuterSet.choose dnf)
 
   let singleton : elt -> oset = fun e ->
     OuterSet.singleton (InnerSet.singleton e)
@@ -235,12 +243,12 @@ struct
       Format.formatter -> t -> unit =
       fun ff {el=el; ind=ind; sgn=sgn} ->
       Format.fprintf ff "%s" (
-          (Format.asprintf "⟦%c%a⟧%s" (if sgn then '+' else '-') t_format el
-             (Expr_repr.int_subscript_repr ind)))
+        (Format.asprintf "⟦%c%a⟧%s" (if sgn then '+' else '-') t_format el
+           (Expr_repr.int_subscript_repr ind)))
   end
-  
+
   include D
-      
+
   (* we consider dependent events over Derived Ts to access
      their assertion of hash-constancy before erasure
   *)
@@ -266,13 +274,13 @@ struct
   let dnf_lift_format t_format : Format.formatter -> DNF.t -> unit =
     DNF.OuterSet.lift_format
       (DNF.InnerSet.lift_format (D.lift_format t_format) "" "𝟙") " + " "𝟘"
-    
+
 
   module DepEv = DependentEv(T)
 
   module ArithSynth (A : Arithmetic) =
   struct
-               
+
     (**
        a synthesizer is structurally equivalent to an AST over DepEv's
        it takes a source of A.t values for DepEv "variables", and combines
@@ -282,9 +290,9 @@ struct
       (DepEv.t -> A.t) -> A.t
     type synth = synthesizer
 
-    
+
     module DepEvSet = Set(DepEv)
-        
+
     (** a req_synth combines a synthesizer with its requirements for
         successful computation *)
     type req_synth = DepEvSet.t * synth
@@ -304,8 +312,8 @@ struct
       (DepEvSet.union r1 r2, fun provider ->
           A.sub (s1 provider) (s2 provider))
 
-        
-        
+
+
     let synth_one : req_synth = (DepEvSet.empty, fun _ -> A.one)
     let synth_zero : req_synth = (DepEvSet.empty, fun _ -> A.zero)
 
@@ -313,7 +321,7 @@ struct
       (DepEvSet.singleton d, fun provider -> provider d)
 
     module DHashMap = Map(D.HashT)
-      
+
     (** `separate` takes a DNF and expresses it as a sum, product, and difference
         of dependent events.
 
@@ -322,47 +330,49 @@ struct
 
         PRECONDITION: This should only be called on conjunction-coexclusive DNFs *)
     let separate : DNF.t -> req_synth = fun dnf ->
-      (* returns a synthesizer for a dependent conjunction *)
-      let synth_dep_conj : DNF.iset -> req_synth = fun dep_conj ->
-        let pos_conj, neg_conj = DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
-        if DNF.InnerSet.is_empty neg_conj then
-          (synth_var (D.lower_to_set pos_conj))
-        else
-          (* now each of pos and neg contain sets of Derived types constant
-             over sign and index (the former by this parition and the latter
-             by the hash-splitting below) so we can erase those components
-             and transform each to a dependent event. The correct arithmetic
-             to compute the probability of the original is the difference
-             in probabilities of the full conjunction and the negative component *)
-          let full_dep, pos_dep = D.lower_to_set dep_conj, D.lower_to_set pos_conj in
-          (* this corresponds to ℙ(AB̄) = ℙ(A) - ℙ(AB) *)
-          synth_sub (synth_var pos_dep) (synth_var full_dep) in
-      
-      (* returns a synthesizer for an arbitrary conjunction by splitting
-           it into dependent conjunctions *)
-      let separate_conj : DNF.iset -> req_synth = fun conj ->
-        let hashed_ev = DNF.InnerSet.fold (fun d hashed_ev ->
-            let hash = D.hash d in
-            DHashMap.update hash (function
-                | None -> Some (DNF.InnerSet.singleton d)
-                | Some s -> Some (DNF.InnerSet.add d s)
-              ) hashed_ev
-          ) conj DHashMap.empty in
-        DHashMap.map_reduce
-          (fun _ -> synth_dep_conj) synth_mult synth_one hashed_ev in
-      DNF.OuterSet.map_reduce separate_conj synth_add synth_zero dnf
+      if DNF.is_zero dnf then synth_zero else
+      if DNF.is_one dnf then synth_one else
+        (* returns a synthesizer for a dependent conjunction *)
+        let synth_dep_conj : DNF.iset -> req_synth = fun dep_conj ->
+          let pos_conj, neg_conj = DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
+          if DNF.InnerSet.is_empty neg_conj then
+            (synth_var (D.lower_to_set pos_conj))
+          else
+            (* now each of pos and neg contain sets of Derived types constant
+               over sign and index (the former by this parition and the latter
+               by the hash-splitting below) so we can erase those components
+               and transform each to a dependent event. The correct arithmetic
+               to compute the probability of the original is the difference
+               in probabilities of the full conjunction and the negative component *)
+            let full_dep, pos_dep = D.lower_to_set dep_conj, D.lower_to_set pos_conj in
+            (* this corresponds to ℙ(AB̄) = ℙ(A) - ℙ(AB) *)
+            synth_sub (synth_var pos_dep) (synth_var full_dep) in
+
+        (* returns a synthesizer for an arbitrary conjunction by splitting
+             it into dependent conjunctions *)
+        let separate_conj : DNF.iset -> req_synth = fun conj ->
+          let hashed_ev = DNF.InnerSet.fold (fun d hashed_ev ->
+              let hash = D.hash d in
+              DHashMap.update hash (function
+                  | None -> Some (DNF.InnerSet.singleton d)
+                  | Some s -> Some (DNF.InnerSet.add d s)
+                ) hashed_ev
+            ) conj DHashMap.empty in
+          DHashMap.map_reduce
+            (fun _ -> synth_dep_conj) synth_mult synth_one hashed_ev in
+        DNF.OuterSet.map_reduce separate_conj synth_add synth_zero dnf
 
     (**
        THIS IS THE MAIN ENTRY POINT
-       
+
        Use this to turn DNFs into computable structures over
        dependent events
     *)
     let dnf_to_req_synth : DNF.t -> req_synth = fun dnf ->
       dnf
-        |> DNF.eliminate_subsumption (* TODO - test how necessary these really are *)
-        |> DNF.make_computable
-        |> DNF.eliminate_subsumption
-        |> separate
+      |> DNF.eliminate_subsumption (* TODO - test how necessary these really are *)
+      |> DNF.make_computable
+      |> DNF.eliminate_subsumption
+      |> separate
   end
 end

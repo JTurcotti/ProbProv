@@ -58,7 +58,9 @@ struct
   let get_intraprocedural_blame : blame_flow -> Context.event = fun blame_flow ->
     let blame = get_event_for_func_ret
         blame_flow.bf_tgt.bt_func blame_flow.bf_tgt.bt_ret in
-    Context.SiteMap.find (blame_source_as_site blame_flow.bf_src) blame
+    match Context.SiteMap.find_opt (blame_source_as_site blame_flow.bf_src) blame with
+    | None -> Context.event_zero
+    | Some e -> e
 
   let get_intrafunc_callsites : blame_target -> (Expr.call * Expr.ret) list = fun tgt ->
     let blame = get_event_for_func_ret tgt.bt_func tgt.bt_ret in
@@ -644,14 +646,14 @@ struct
       let format_rm ff (func, rm) =
         Expr.RetMap.iter (
           fun (Expr.Ret (i, s)) dbsm ->
-            Format.fprintf ff {|├───────┬─result %d "%s":%a|}
+            Format.fprintf ff "├───────┬─result %d '%s':%a\n"
               i s format_dbs_map (func, dbsm)
         ) rm
       in
       Expr.FuncMap.iter (
         fun (Expr.Func func) rm ->
           Format.fprintf ff
-            "Omegas for function %s:\n%a\n└───────╼\n"
+            "\nOmegas for function %s:\n%a└───────╼\n"
             func format_rm (func, rm)
       ) organized_mp
   end
