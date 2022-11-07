@@ -360,20 +360,26 @@ struct
         (* returns a synthesizer for a dependent conjunction *)
         let synth_dep_conj : DNF.iset -> req_synth = fun dep_conj ->
           let pos_conj, neg_conj = DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
-          (* we no longer need any of the information added by the Derived module, so we
-             lower down to a set of elements, forgetting dependence info and signs *)
+          (* now both pos_conj and neg_conj contain sets of derived events
+             that are constant over their derivation index and their sign.
+             So we can remove that information and lower them just to sets
+             of events, guaranteed to be independent and of a single sign
+             (that sign is pos for pos_conj and neg for neg_conj *)
           let full_elems, pos_elems, neg_elems =
-            D.lower_to_set dep_conj, D.lower_to_set pos_conj, D.lower_to_set neg_conj in
+            D.lower_to_set dep_conj,
+            D.lower_to_set pos_conj,
+            D.lower_to_set neg_conj in
+          (* handle some special cases *)
           if D.S.is_empty neg_elems then
             (synth_var pos_elems) else
+          if D.S.is_empty pos_elems then
+            (synth_sub synth_one (synth_var neg_elems)) else
           if not (D.S.is_empty (D.S.inter pos_elems neg_elems)) then
             (synth_zero)
           else
-            (* now each of pos and neg contain sets of Derived types constant
-               over sign and index (the former by this parition and the latter
-               by the hash-splitting below) so we can erase those components
-               and transform each to a dependent event. The correct arithmetic
-               to compute the probability of the original is the difference
+            (* now each of pos_elems and neg_elems contain nonempty sets of events.
+               The correct arithmetic to compute the probability of the original
+               conjunction under consideration is the difference
                in probabilities of the full conjunction and the negative component *)
             (* this corresponds to ℙ(AB̄) = ℙ(A) - ℙ(AB) *)
             synth_sub (synth_var pos_elems) (synth_var full_elems) in
