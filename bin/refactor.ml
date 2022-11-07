@@ -360,8 +360,14 @@ struct
         (* returns a synthesizer for a dependent conjunction *)
         let synth_dep_conj : DNF.iset -> req_synth = fun dep_conj ->
           let pos_conj, neg_conj = DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
-          if DNF.InnerSet.is_empty neg_conj then
-            (synth_var (D.lower_to_set pos_conj))
+          (* we no longer need any of the information added by the Derived module, so we
+             lower down to a set of elements, forgetting dependence info and signs *)
+          let full_elems, pos_elems, neg_elems =
+            D.lower_to_set dep_conj, D.lower_to_set pos_conj, D.lower_to_set neg_conj in
+          if D.S.is_empty neg_elems then
+            (synth_var pos_elems) else
+          if not (D.S.is_empty (D.S.inter pos_elems neg_elems)) then
+            (synth_zero)
           else
             (* now each of pos and neg contain sets of Derived types constant
                over sign and index (the former by this parition and the latter
@@ -369,9 +375,8 @@ struct
                and transform each to a dependent event. The correct arithmetic
                to compute the probability of the original is the difference
                in probabilities of the full conjunction and the negative component *)
-            let full_dep, pos_dep = D.lower_to_set dep_conj, D.lower_to_set pos_conj in
             (* this corresponds to ℙ(AB̄) = ℙ(A) - ℙ(AB) *)
-            synth_sub (synth_var pos_dep) (synth_var full_dep) in
+            synth_sub (synth_var pos_elems) (synth_var full_elems) in
 
         (* returns a synthesizer for an arbitrary conjunction by splitting
              it into dependent conjunctions *)
