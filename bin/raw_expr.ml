@@ -4,7 +4,8 @@
 *)
 
 (* real IMP would have aexp and bexp, we don't care about the difference here *)
-type raw_aexp =
+type raw_aexp = {data: raw_aexp_data; start_pos: int; end_pos : int}
+and raw_aexp_data = 
   | Raw_Var of string
   | Raw_Const
   | Raw_Binop of raw_aexp * raw_aexp
@@ -22,8 +23,8 @@ type raw_expr =
 
 type raw_fdecl = {
   raw_name: string;
-  raw_params: string list;
-  raw_results: string list;
+  raw_params: (string * int * int) list;
+  raw_results: (string * int * int) list;
   raw_body: raw_expr;
 }
 

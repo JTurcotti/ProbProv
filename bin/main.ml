@@ -38,9 +38,17 @@ include Analyze.ProgramAnalyzer (struct
     type t = Typecheck.typechecked_program
     let get _ = typechecked_prog
   end)
+
+
+let _ = Output.VeryPrettyPrint.format_program Format.std_formatter
+    !IO.input_file typechecked_prog
+
+(*let rgb_control r g b =
+  Format.sprintf "\027[38;2;%d;%d;%dm" r g b*)
     
 let computed_omegas = Output.get_program_blame (fun _ -> true)
-let _ = Output.format_program_blame Format.std_formatter computed_omegas
+let _ = Format.fprintf Format.std_formatter
+    "%a" Output.format_program_blame computed_omegas
   
 
 (*

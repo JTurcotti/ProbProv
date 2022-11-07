@@ -34,68 +34,66 @@ let list_to_string to_str =
 
 
 let program_string (p : program) =
-  match p with
-  | Program fdecl_map ->
-    let rec aexp_repr aexp =
-      match aexp with
-      | Var (v, l) ->
-        (Printf.sprintf "%s%s" (local_to_string v) (label_to_string l))
-      | Const l ->
-        (Printf.sprintf "0%s" (label_to_string l))
-      | Binop (a1, a2, l) ->
-        (Printf.sprintf "(%s ⊕%s %s)"
-           (aexp_repr a1) (label_to_string l) (aexp_repr a2))
-      | Unop (a, l) ->
-        (Printf.sprintf "(⊖%s%s)"
-           (label_to_string l) (aexp_repr a))
-      | FApp (f, a_list, l, c) ->
-        (Printf.sprintf "%s%s%s(%s)"
-           (func_to_string f) (call_to_string c) (label_to_string l)
-           (list_to_string aexp_repr a_list))
-    in
-    let rec ntabs tabs =
-      if tabs = 0 then ""
-      else Printf.sprintf "\t%s" (ntabs (tabs - 1))
-    in
-    let rec expr_repr expr tabs =
-      (fun (add_tabs, s) -> if add_tabs
-        then (ntabs tabs) ^ s else s)
-        (match expr with
-         | Skip ->
-           true,
-           "skip"
-         | Cond (a, e_t, e_f, b) ->
-           true,
-           Printf.sprintf "if%s [%s] then {\n%s\n%s} else {\n%s\n%s}"
-             (branch_to_string b) (aexp_repr a)
-             (expr_repr e_t (tabs + 1)) (ntabs tabs)
-             (expr_repr e_f (tabs + 1)) (ntabs tabs)
-         | Assign (v, a) ->
-           true,
-           Printf.sprintf "%s = %s" (local_to_string v) (aexp_repr a)
-         | FAssign (v_list, a) ->
-           true,
-           Printf.sprintf "%s = %s"
-             (list_to_string local_to_string v_list) (aexp_repr a)
-         | Seq (e1, e2) ->
-           false,
-           Printf.sprintf "%s\n%s"
-             (expr_repr e1 tabs) (expr_repr e2 tabs)
-         | Assert (v, a) ->
-           true,
-           Printf.sprintf "assert %s by %s"
-             (local_to_string v) (aexp_repr a)
-         | AExp a ->
-           true,
-           aexp_repr a)
-    in
-    let fdecl_repr fdecl =
-      Printf.sprintf "def %s:\n%s"
-        (func_to_string fdecl.name)
-        (expr_repr fdecl.body 1)
-    in
-    let acc_fdecl _ fdecl prior_repr =
-      (if prior_repr = "" then "" else prior_repr ^ "\n\n") ^ (fdecl_repr fdecl) in
-    FuncMap.fold acc_fdecl fdecl_map ""
+  let rec aexp_repr aexp =
+    match aexp with
+    | Var (v, l) ->
+      (Printf.sprintf "%s%s" (local_to_string v) (label_to_string l))
+    | Const l ->
+      (Printf.sprintf "0%s" (label_to_string l))
+    | Binop (a1, a2, l) ->
+      (Printf.sprintf "(%s ⊕%s %s)"
+         (aexp_repr a1) (label_to_string l) (aexp_repr a2))
+    | Unop (a, l) ->
+      (Printf.sprintf "(⊖%s%s)"
+         (label_to_string l) (aexp_repr a))
+    | FApp (f, a_list, l, c) ->
+      (Printf.sprintf "%s%s%s(%s)"
+         (func_to_string f) (call_to_string c) (label_to_string l)
+         (list_to_string aexp_repr a_list))
+  in
+  let rec ntabs tabs =
+    if tabs = 0 then ""
+    else Printf.sprintf "\t%s" (ntabs (tabs - 1))
+  in
+  let rec expr_repr expr tabs =
+    (fun (add_tabs, s) -> if add_tabs
+      then (ntabs tabs) ^ s else s)
+      (match expr with
+       | Skip ->
+         true,
+         "skip"
+       | Cond (a, e_t, e_f, b) ->
+         true,
+         Printf.sprintf "if%s [%s] then {\n%s\n%s} else {\n%s\n%s}"
+           (branch_to_string b) (aexp_repr a)
+           (expr_repr e_t (tabs + 1)) (ntabs tabs)
+           (expr_repr e_f (tabs + 1)) (ntabs tabs)
+       | Assign (v, a) ->
+         true,
+         Printf.sprintf "%s = %s" (local_to_string v) (aexp_repr a)
+       | FAssign (v_list, a) ->
+         true,
+         Printf.sprintf "%s = %s"
+           (list_to_string local_to_string v_list) (aexp_repr a)
+       | Seq (e1, e2) ->
+         false,
+         Printf.sprintf "%s\n%s"
+           (expr_repr e1 tabs) (expr_repr e2 tabs)
+       | Assert (v, a) ->
+         true,
+         Printf.sprintf "assert %s by %s"
+           (local_to_string v) (aexp_repr a)
+       | AExp a ->
+         true,
+         aexp_repr a)
+  in
+  let fdecl_repr fdecl =
+    Printf.sprintf "def %s:\n%s"
+      (func_to_string fdecl.name)
+      (expr_repr fdecl.body 1)
+  in
+  let acc_fdecl _ fdecl prior_repr =
+    (if prior_repr = "" then "" else prior_repr ^ "\n\n") ^ (fdecl_repr fdecl) in
+  FuncMap.fold acc_fdecl p.func_tbl ""
 
 

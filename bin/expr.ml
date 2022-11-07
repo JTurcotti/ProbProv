@@ -63,11 +63,19 @@ module Func = struct
   type t = func
 end
 
-module FuncMap = Map(Func)
-type program = Program of fdecl FuncMap.t
+module Int = struct
+  type t = int
+end
 
-let lookup_func_opt f (Program mp) : fdecl option =
-  FuncMap.find_opt f mp
+module FuncMap = Map(Func)
+module IntMap = Map(Int)
+type program = {func_tbl: fdecl FuncMap.t;
+                label_tbl: label IntMap.t;
+                arg_tbl: arg IntMap.t;
+                ret_tbl: ret IntMap.t}
+
+let lookup_func_opt f prog : fdecl option =
+  FuncMap.find_opt f prog.func_tbl
 
 exception LabelErr of string
 
@@ -98,28 +106,43 @@ let label_prog raw_prog =
       (* we use this to ensure each call to the same function
          gets a distinct index *)
       let call_counter = ref 1 in
+      (* we use this to track the labels that source positions correspond
+         to as we assign them *)
+      let label_tbl = ref IntMap.empty in
+      let arg_tbl = ref IntMap.empty in
+      let ret_tbl = ref IntMap.empty in
+      let update_tbl s e tbl v =
+        for i = s to e - 1 do
+          tbl := IntMap.add i v !tbl
+        done; v in
       let inc_counter wrap_i c _ =
         let () = c := !c + 1 in
         wrap_i (!c - 1) in
       let next_branch _ =
         inc_counter (fun i -> Branch i) branch_counter () in
-      let next_label _ =
-        inc_counter (fun i -> Label i) label_counter () in
+      let next_label s_pos e_pos  =
+        let l = inc_counter (fun i -> Label i) label_counter () in
+        update_tbl s_pos e_pos label_tbl l in
       let next_call f =
         inc_counter (fun i -> Call(f, i)) call_counter () in
-      let rec label_aexp raw_aexpr =
-        match raw_aexpr with
-      | Raw_Var s -> Var(Local(s), next_label())
-      | Raw_Const -> Const(next_label())
+      let get_arg i s s_pos e_pos =
+        update_tbl s_pos e_pos arg_tbl (Arg(i, s)) in
+      let get_ret i s s_pos e_pos =
+        update_tbl s_pos e_pos ret_tbl (Ret(i, s)) in
+      
+      let rec label_aexp {data=raw_aexp; start_pos=s_pos; end_pos=e_pos} =
+        match raw_aexp with
+      | Raw_Var s -> Var(Local(s), next_label s_pos e_pos)
+      | Raw_Const -> Const(next_label s_pos e_pos)
       | Raw_Binop (a, a') ->
-        Binop(label_aexp a, label_aexp a', next_label())
-      | Raw_Unop a -> Unop(label_aexp a, next_label())
+        Binop(label_aexp a, label_aexp a', next_label s_pos e_pos)
+      | Raw_Unop a -> Unop(label_aexp a, next_label s_pos e_pos)
       | Raw_FApp (s, a_list) ->
         let () = if not (is_func_name s) then
             raise (LabelErr (s ^ " not a function name")) else () in
         let f = Func(s) in
         FApp(f, List.map label_aexp a_list,
-             next_label(), next_call f)
+             next_label s_pos e_pos, next_call f)
     in
     let rec label_expr raw_expr =
       (match raw_expr with
@@ -141,18 +164,25 @@ let label_prog raw_prog =
           ((transformer i s) :: out, i - 1)) list ([], List.length list - 1) in out
     in
     let label_fdecl raw_fdecl =
+      let name = Func(raw_fdecl.raw_name) in
       {
-        name = Func(raw_fdecl.raw_name);
-        params = wrap_fold raw_fdecl.raw_params (fun i s -> Arg(i, s));
+        name = name;
+        params = wrap_fold raw_fdecl.raw_params
+            (fun i (name, s_pos, e_pos)  -> get_arg i name s_pos e_pos);
         num_params = List.length raw_fdecl.raw_params;
-        results = wrap_fold raw_fdecl.raw_results (fun i s -> Ret(i, s));
+        results = wrap_fold raw_fdecl.raw_results
+            (fun i (name, s_pos, e_pos) -> get_ret i name s_pos e_pos);
         num_results = List.length raw_fdecl.raw_results;
         body = label_expr raw_fdecl.raw_body;
       }
     in
-    Program (List.fold_left (fun prog fdecl ->
+    let func_tbl = List.fold_left (fun prog fdecl ->
         FuncMap.add (Func(fdecl.raw_name)) (label_fdecl fdecl) prog
-      ) FuncMap.empty flist)
+      ) FuncMap.empty flist in
+    {func_tbl=func_tbl;
+     label_tbl=(!label_tbl);
+     arg_tbl=(!arg_tbl);
+     ret_tbl=(!ret_tbl)}
   )
 
 let rec aexpr_labels : aexp -> LabelSet.t =

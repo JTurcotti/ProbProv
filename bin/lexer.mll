@@ -6,15 +6,21 @@ exception FAIL
 rule token = parse
      | [' ' '\t' '\n'] {token lexbuf}
      | ("//" | '#')[^'\n']* {token lexbuf}
-     | ['0'-'9']+ {CONST}
+     | ['0'-'9']+ {
+       CONST(Lexing.lexeme_start lexbuf, Lexing.lexeme_end lexbuf)
+       }
      |	'(' {LPAREN}
      |	')' {RPAREN}
      |	'{' {LBRACE}
      |	'}' {RBRACE}
      |	',' {COMMA}
      |  ['+''-''*''/''>''<'] | "<=" | ">="
-     | "==" | "!=" | "||" | "&&" {BINOP}
-     |	'!' {UNOP}
+     | "==" | "!=" | "||" | "&&" {
+       BINOP(Lexing.lexeme_start lexbuf, Lexing.lexeme_end lexbuf)
+       }
+     |	'!' {
+     	UNOP(Lexing.lexeme_start lexbuf, Lexing.lexeme_end lexbuf)
+	}
      |  '=' {EQ}
      |	"->" {TO}
      |  "if"	{IF}
@@ -24,5 +30,7 @@ rule token = parse
      |	"def"  {DEF}
      | 	"assert" {ASSERT}
      |	"by" {BY}
-     | ['a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9'''''_']* as ident { IDENT(ident) }
+     | ['a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9'''''_']* as ident {
+       IDENT(ident, Lexing.lexeme_start lexbuf, Lexing.lexeme_end lexbuf)
+       }
      | 	eof {EOF}

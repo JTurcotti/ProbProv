@@ -17,7 +17,7 @@ let force_some =
 module ProgramAnalyzer (DeferredProg : Defer with type t = Typecheck.typechecked_program) = 
 struct
   module GetProg = IdempotentDefer (DeferredProg)
-  let get_program _ = match GetProg.get() with TProgram mp -> mp
+  let get_program _ = (GetProg.get()).tfunc_tbl
 
 
   (** gives an index of program labels on demand *)
@@ -656,5 +656,39 @@ struct
             "\nOmegas for function %s:\n%a└───────╼\n"
             func format_rm (func, rm)
       ) organized_mp
+
+    module VeryPrettyPrint =
+    struct
+      let format_rgb ff r g b c =
+        Format.fprintf ff "\027[38;2;%d;%d;%dm%c\027[0m" r g b c
+
+      let format_program ff input_file (tprog : Typecheck.typechecked_program) =
+        let format_char i c =
+          match
+            Expr.IntMap.find_opt i tprog.label_tbl,
+            Expr.IntMap.find_opt i tprog.arg_tbl,
+            Expr.IntMap.find_opt i tprog.ret_tbl
+          with
+          | Some _, _, _ ->
+            (* it's labelled *)
+            format_rgb ff 0 0 255 c
+          | None, Some _, _ ->
+            (* it's an arg *)
+            format_rgb ff 255 0 0 c
+          | None, None, Some _ ->
+            format_rgb ff 0 255 0 c
+          | None, None, None ->
+            Format.fprintf ff "%c" c in
+        let char_num = ref 0 in
+        let get_char _ = let i = !char_num in char_num := i + 1; i in
+        let ic = open_in input_file in
+        Format.fprintf ff "\n";
+        try
+          while true do
+            let c = input_char ic in
+            format_char (get_char ()) c
+          done
+        with End_of_file -> ()
+    end
   end
 end

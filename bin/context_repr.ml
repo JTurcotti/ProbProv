@@ -93,8 +93,10 @@ let context_repr_fdecl_out fdecl =
   context_repr_prim local_repr  
 
 let func_repr (Func s) = s
+
+open Typecheck
   
-let typechecked_program_repr (Typecheck.TProgram map) =
+let typechecked_program_repr tprogram = 
   let result_repr (fdecl, c_opt) =
     match c_opt with
       | None -> "FAIL"
@@ -102,7 +104,7 @@ let typechecked_program_repr (Typecheck.TProgram map) =
   map_repr
     FuncMap.is_empty FuncMap.choose FuncMap.remove FuncMap.fold
     "" func_repr result_repr "function %s: %s" "%s\n\n%s"
-    map
+    tprogram.tfunc_tbl
     
 
 (* for testing use: *)

@@ -12,12 +12,12 @@ let double_singleton_bind l1 l2 f =
   | [v1], [v2] -> f v1 v2
   | _ -> []
 
-let double_option_bind opt1 opt2 f =
+let double_option_bind f opt1 opt2 =
   match (opt1, opt2) with
   | Some v1, Some v2 -> f v1 v2
   | _ -> None
 
-let triple_option_bind opt1 opt2 opt3 f =
+let triple_option_bind f opt1 opt2 opt3 =
   match (opt1, opt2, opt3) with
   | Some v1, Some v2, Some v3 -> f v1 v2 v3
   | _ -> None
@@ -153,12 +153,12 @@ let rec typecheck_expr prog expr ctxt: context option =
        context_merge_cond. Return None if typechecking
        fails for the subaexp or either subexpr*)
     triple_option_bind
-      (typecheck_aexp_single prog ctxt a)
-      (typecheck_expr prog e1 ctxt)
-      (typecheck_expr prog e2 ctxt)
       (fun blame_branch ctxt1 ctxt2 ->
          Some (context_merge_cond
                  branch blame_branch e1 e2 ctxt1 ctxt2))
+      (typecheck_aexp_single prog ctxt a)
+      (typecheck_expr prog e1 ctxt)
+      (typecheck_expr prog e2 ctxt)
   | Assign (v, a) ->
     (* an assignment checks the arithmetic expression,
        if it typechecks to a blame then we assign that
@@ -208,11 +208,17 @@ let typecheck_fdecl prog fdecl : context option =
                  |> Context.Refactor.context_reduce
                  |> filter_phantom_ret)
     
-type typechecked_program = TProgram of (fdecl * context option) FuncMap.t
+type typechecked_program = {tfunc_tbl: (fdecl * context option) FuncMap.t;
+                            label_tbl: label IntMap.t;
+                            arg_tbl: arg IntMap.t;
+                            ret_tbl: ret IntMap.t}
 
-let typecheck_program (Program fdecls) : typechecked_program =
-  TProgram (FuncMap.map (fun fdecl ->
-      (fdecl, typecheck_fdecl (Program fdecls) fdecl)) fdecls)
+let typecheck_program p : typechecked_program =
+  {tfunc_tbl=FuncMap.map (fun fdecl ->
+       (fdecl, typecheck_fdecl p fdecl)) p.func_tbl;
+   label_tbl=p.label_tbl;
+   arg_tbl=p.arg_tbl;
+   ret_tbl=p.ret_tbl}
 
 (**
    this exists to abstract the process of indexing information about
@@ -226,7 +232,7 @@ struct
   module M = Map(T)
   module S = Set(T)
   let index : typechecked_program -> fdecl Map(T).t =
-    fun (TProgram mp) ->
+    fun tprogram ->
     FuncMap.fold (
       fun _ (fdecl, _) ->
         M.union
@@ -234,7 +240,7 @@ struct
           (M.from_elem_foo
              (S.elements (ExprExtract.expr_extract fdecl.body))
              (fun _ -> fdecl))
-    ) mp M.empty
+    ) tprogram.tfunc_tbl M.empty
 end
 
 module LabelIndexer = Indexer(LabelT)
