@@ -33,6 +33,10 @@ sig
 
   val choose: t -> elt
 
+  val for_all: (elt -> bool) -> t -> bool
+
+  val exists: (elt -> bool) -> t -> bool
+
   (* be careful with this - definition should correspond to event implication *)
   val subset: t -> t -> bool
 
@@ -205,6 +209,20 @@ struct
 
   exception UnexpectedBranchInMakeComputable
 
+  let is_computable (oset: oset) : bool =
+    OuterSet.for_all (fun fst ->
+        OuterSet.for_all (fun snd ->
+            InnerSet.exists (fun i_fst ->
+                InnerSet.exists (fun i_snd ->
+                    i_fst = (neg_elt i_snd) &&
+                    i_snd = (neg_elt i_fst)
+                  ) snd
+              ) fst
+          ) (OuterSet.remove fst oset)
+      ) oset
+
+  exception MakeComputableFailed
+
   (**
      If called on an oset representing an arbitrary DNF, `make_computable`
      will return an event-equivalent DNF in which the conjunctions are
@@ -217,15 +235,18 @@ struct
       match slice oset with
       | None -> raise UnexpectedBranchInMakeComputable
       | Some (a, b, c) ->
-        disj
+        let computable = disj
           (conj_elt a
              (* we call eliminate_subsumption here because the mapped removal
-                can introduce new subsumption (e.g. under remove a: a + b ↦ 1 + b)
-                or the union with b after the mapped removal, and it is vital that we
-                recur into as small an object as possible *)
+                  can introduce new subsumption (e.g. under remove a: a + b ↦ 1 + b)
+                  or the union with b after the mapped removal, and it is vital that
+                  we recur into as small an object as possible *)
              (make_computable (eliminate_subsumption (disj b c))))
           (conj_elt (neg_elt a)
-             (make_computable c))
+             (make_computable c)) in
+        if is_computable computable then computable else
+          (* TODO: remove this once it's been passing for a while *)
+          raise MakeComputableFailed
 end
 
 type 't derived_t = {el: 't; ind: int; sgn: bool}
