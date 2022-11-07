@@ -318,7 +318,8 @@ struct
     let synth_zero : req_synth = (DepEvSet.empty, fun _ -> A.zero)
 
     let synth_var : DepEv.t -> req_synth = fun d ->
-      (DepEvSet.singleton d, fun provider -> provider d)
+      if DepEv.Set.is_empty d then synth_one else
+        (DepEvSet.singleton d, fun provider -> provider d)
 
     module DHashMap = Map(D.HashT)
 
