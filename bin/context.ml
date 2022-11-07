@@ -344,6 +344,9 @@ let rec compute_touch_set (e : expr) =
     LocalMap.merge (merge_event_ops_across_branch b)
       (compute_touch_set e_t) (compute_touch_set e_f)
   | Assign (x, _) -> LocalMap.singleton x event_one
+  | FAssign (xl, _) -> List.fold_right
+                         (fun x -> LocalMap.add x event_one)
+                         xl LocalMap.empty
   | Seq (e1, e2) ->
     LocalMap.merge merge_event_ops
       (compute_touch_set e1) (compute_touch_set e2)
