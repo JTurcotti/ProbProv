@@ -203,6 +203,8 @@ struct
       let b = OuterSet.map (InnerSet.remove a) b_fat in
       Some (a, b, c)
 
+  exception UnexpectedBranchInMakeComputable
+
   (**
      If called on an oset representing an arbitrary DNF, `make_computable`
      will return an event-equivalent DNF in which the conjunctions are
@@ -210,9 +212,10 @@ struct
      DNFs
      **)
   let rec make_computable (oset : oset) : oset =
-    if OuterSet.is_empty oset then zero else
+    if is_zero oset then zero else
+    if is_one oset then one else
       match slice oset with
-      | None -> one
+      | None -> raise UnexpectedBranchInMakeComputable
       | Some (a, b, c) ->
         disj
           (conj_elt a
