@@ -138,6 +138,18 @@ struct
   module OmegaSet = Set(Omega)
   type omega = Omega.t
 
+
+  (*
+     The work performed to derive Phi and to derive Beta is very similar
+     in that it involves equations over Pi and Phi. Similarly, the work
+     performed to derive Eta and Omega is vert similar in that it involves
+     equations over Beta and Eta. The former and the latter here naturally
+     yield two modules for performing computation, one for PiPhi computation
+     and one for BetaEta computation. This functor is intended to provide
+     both. For each of PiPhi and BetaEta, one layer is computed directly
+     and one computed indirectly. The Direct and Indirect submodules capture
+     the respective work for each layer.
+     *)
   module DisjunctiveWorkhorse
       (OriginalElt : DepHashT) (SequelElt: DepHashT) =
   struct
