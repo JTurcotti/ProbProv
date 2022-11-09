@@ -29,17 +29,17 @@ struct
 
   let fprint_set ff : S.t -> unit = fun t_set ->
     first := true;
-    Format.fprintf ff "{";
+    Format.fprintf ff "{@[";
     S.iter (fun el ->
-        Format.fprintf ff "%s%a" (check_first ()) Inner.fprint_t el) t_set;
-    Format.fprintf ff "}"
+        Format.fprintf ff "%s@,%a" (check_first ()) Inner.fprint_t el) t_set;
+    Format.fprintf ff "@]}"
 
   let fprint_map ff : float M.t -> unit = fun t_map ->
     first := true;
-    Format.fprintf ff "{";
+    Format.fprintf ff "{@[";
     M.iter (fun el v ->
-        Format.fprintf ff "%s%a: %f" (check_first ()) Inner.fprint_t el v) t_map;
-    Format.fprintf ff "}"
+        Format.fprintf ff "%s@,%a: %f" (check_first ()) Inner.fprint_t el v) t_map;
+    Format.fprintf ff "@]}"
 end
 
 let fprint_label ff : label -> unit = fun (Label i) ->
