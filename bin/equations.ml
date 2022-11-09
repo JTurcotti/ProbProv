@@ -76,19 +76,19 @@ sig
   val add : eqn -> system -> system
 
   val solve : system -> float varMap
-end
+end 
 
 type 'var expr_constr =
     | Const of float
     | Var of 'var
-    | Mult of 'var expr_constr * 'var expr_constr
-    | Add of 'var expr_constr * 'var expr_constr
+    | Mult of 'var expr_constr list
+    | Add of 'var expr_constr list
     | Sub of 'var expr_constr * 'var expr_constr
     
 type ('var, 'expr) eqn_constr =
   | Eqn of 'var * 'expr
 
-module EqnSystem (Variable : T) =
+module EqnSystem (Variable : T) = 
 struct
   type var = Variable.t
 
@@ -102,9 +102,25 @@ struct
 
   let const_expr f = Const(f)
   let var_expr v = Var(v)
-  let mult_expr e1 e2 = Mult(e1, e2)
-  let add_expr e1 e2 = Add(e1, e2)
-  let sub_expr e1 e2 = Sub(e1, e2)
+  let mult_expr e1 e2 =
+    match e1, e2 with
+    | Mult e1l, Mult e2l -> Mult (List.append e1l e2l)
+    | Mult e1l, e2 -> Mult (e2 :: e1l)
+    | e1, Mult e2l -> Mult (e1 :: e2l)
+    | Const(f1), Const(f2) -> Const(f1 *. f2)
+    | e1, e2 -> Mult [e1; e2]
+  let add_expr e1 e2 =
+    match e1, e2 with
+    | Add e1l, Add e2l -> Add (List.append e1l e2l)
+    | Add e1l, e2 -> Add (e2 :: e1l)
+    | e1, Add e2l -> Add (e1 :: e2l)
+    | Const(f1), Const(f2) -> Const(f1 +. f2)
+    | e1, e2 -> Add [e1; e2]
+
+  let sub_expr e1 e2 =
+    match e1, e2 with
+    | Const(f1), Const(f2) -> Const(f1 -. f2)
+    | e1, e2 -> Sub(e1, e2)
 
   (** ExprArith represents arithmetic over expressions *)
   module ExprArith =
@@ -134,8 +150,8 @@ struct
       function
       | Const _ -> VarSet.empty
       | Var v -> VarSet.singleton v
-      | Mult(e1, e2) 
-      | Add(e1, e2) 
+      | Mult(el) 
+      | Add(el) -> list_map_reduce vars_of_expr VarSet.union VarSet.empty el
       | Sub(e1, e2) -> VarSet.union (vars_of_expr e1) (vars_of_expr e2) in
     function
     | Eqn(v, e) -> VarSet.add v (vars_of_expr e)
@@ -208,10 +224,12 @@ struct
     let rec expr_repr = function
       | Const f -> Printf.sprintf "%f" f
       | Var v -> Printf.sprintf "x(%d)" (var_i v)
-      | Mult(e1, e2) ->
-        Printf.sprintf "(%s * %s)" (expr_repr e1) (expr_repr e2)
-      | Add(e1, e2) ->
-        Printf.sprintf "(%s + %s)" (expr_repr e1) (expr_repr e2)
+      | Mult(el) ->
+        Printf.sprintf "(%s)" (list_map_reduce_nonempty expr_repr
+                                 (Printf.sprintf "%s * %s") el)
+      | Add(el) ->
+        Printf.sprintf "(%s)" (list_map_reduce_nonempty expr_repr
+                                 (Printf.sprintf "%s + %s") el)
       | Sub(e1, e2) ->
         Printf.sprintf "(%s - %s)" (expr_repr e1) (expr_repr e2) in
     let eqn_repr = function

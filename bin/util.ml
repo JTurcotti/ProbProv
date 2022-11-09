@@ -24,6 +24,21 @@ let check_first_s s =
 type 't s_constr = 't Set.s_constr
 type ('k, 'v) m_constr = ('k, 'v) Map.m_constr
 
+let list_map_reduce map reduce unit l =
+  match l with
+  | [] -> unit
+  | x :: l -> List.fold_right
+                (compose map reduce) l (map x)
+
+exception ListMapReduceExepectedNonempty
+
+let list_map_reduce_nonempty map reduce l =
+  match l with
+  | [] -> raise ListMapReduceExepectedNonempty
+  | x :: l -> List.fold_right
+                (compose map reduce) l (map x)
+
+
 module Set (T : T) =
 struct
   include Set.Make(Ord(T))
