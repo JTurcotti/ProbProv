@@ -357,28 +357,32 @@ struct
        *)
     let synth_pie : DepEv.t -> DepEv.t -> req_synth =
       fun pos_elems neg_elems ->
+      if not (DepEv.is_empty (DepEv.inter pos_elems neg_elems)) then
+        (* event is impossible *)
+        synth_zero
+      else
 
-      (* precondition: ev not already in signed_conj *)
-      let include_neg_event ev signed_conj =
-        DepEvMap.fold (fun conj_ev sgn ->
-            DepEvMap.add (DepEv.add ev conj_ev) (not sgn)
-          ) signed_conj signed_conj in
-      
-      let pie_expansion = DepEv.fold include_neg_event
-          neg_elems (DepEvMap.singleton pos_elems true) in
-
-      DepEvMap.map_reduce
-        (fun conj_ev sgn ->
-           if sgn then (synth_var conj_ev) else
-             (synth_sub synth_zero (synth_var conj_ev)))
-        synth_add synth_zero pie_expansion
-    
+        (* precondition: ev not already in signed_conj *)
+        let include_neg_event ev signed_conj =
+          DepEvMap.fold (fun conj_ev sgn ->
+              DepEvMap.add (DepEv.add ev conj_ev) (not sgn)
+            ) signed_conj signed_conj in
+        
+        let pie_expansion = DepEv.fold include_neg_event
+            neg_elems (DepEvMap.singleton pos_elems true) in
+        
+        DepEvMap.map_reduce
+          (fun conj_ev sgn ->
+             if sgn then (synth_var conj_ev) else
+               (synth_sub synth_zero (synth_var conj_ev)))
+          synth_add synth_zero pie_expansion
+          
     (** `separate` takes a DNF and expresses it as a sum, product, and difference
         of dependent events.
-
+        
         It returns the list of dependent events involved in the computation,
         and a synthesizer corresponding to the computation.
-
+        
         PRECONDITION: This should only be called on conjunction-coexclusive DNFs *)
     let separate : DNF.t -> req_synth = fun dnf ->
       if DNF.is_zero dnf then synth_zero else
