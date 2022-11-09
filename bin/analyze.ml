@@ -578,6 +578,11 @@ struct
       (Omega)
 
   module Output = struct
+    (* yes this is a ref which is bad. it gets set to true
+       if any omegas outside [0, 1] are detected, indicating
+       an internal error *)
+    let bad_omega_detected = ref false
+    
     type program_omegas = POmegas of float OmegaMap.t
 
     (* messy function, aggregates all direct blame flows for a program
@@ -660,19 +665,26 @@ struct
 
     let format_rgb_float ff (r, g, b) f =
       Format.fprintf ff "\027[38;2;%d;%d;%dm%f\027[0m" r g b f
+
+    let format_rgb_str ff (r, g, b) s =
+      Format.fprintf ff "\027[38;2;%d;%d;%dm%s\027[0m" r g b s
         
     let format_plain_char ff c =
       Format.fprintf ff "%c" c
         
     let scale_heat_color vl =
-      let r, g, b = 0xff, 0x30, 0x30 in
-      let scale i =
-        Float.to_int (255. -. vl *. (255. -. (Float.of_int i))) in
-      (scale r, scale g, scale b)
-      
+      if vl < 0.0 || vl > 1.0 then (
+        bad_omega_detected := true;
+        (0xff, 0xfc, 0x00)
+      ) else (
+        let r, g, b = 0xff, 0x30, 0x30 in
+        let scale i =
+          Float.to_int (255. -. vl *. (255. -. (Float.of_int i))) in
+        (scale r, scale g, scale b))
+        
     let format_by_float ff vl c =
       format_rgb_char ff (scale_heat_color vl) c
-
+        
     let format_float_by_float ff vl =
       format_rgb_float ff (scale_heat_color vl) vl
 
@@ -769,7 +781,12 @@ struct
             "\n└───────────────────────╼\n") in
         let sorted_omegas = sort_omegas omegas in
         Expr.FuncMap.iter (
-          fun func -> Expr.RetMap.iter (format_func_ret func)) sorted_omegas
+          fun func -> Expr.RetMap.iter (format_func_ret func)) sorted_omegas;
+        if !bad_omega_detected then
+          format_rgb_str ff
+            (scale_heat_color 2.0)
+            "\n\027[1mWARNING: Bad omega detected\027[0m\n"
+        else ()
     end
   end
 end
