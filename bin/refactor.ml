@@ -316,11 +316,12 @@ struct
 
 
     module DepEvSet = Set(DepEv)
+    module DepEvMap = Map(DepEv)
 
     (** a req_synth combines a synthesizer with its requirements for
         successful computation *)
     type req_synth = DepEvSet.t * synth
-
+                     
     let synth_mult : req_synth -> req_synth -> req_synth =
       fun (r1, s1) (r2, s2) ->
       (DepEvSet.union r1 r2, fun provider ->
@@ -347,6 +348,31 @@ struct
 
     module DHashMap = Map(D.HashT)
 
+    module EvMap = Map(DepEv.Elt)
+
+    (**
+       For pos_elems = {A, B, C} and neg_elems = {D, E, F} this
+       should return ABC + ABCD̄ + ABCĒ + ABDF̄ - ABCĒF̄ - ABCD̄F̄ - ABCD̄Ē + ABCD̄ĒF̄
+       which is the PIE expansion of ABC ∧ ~(DEF)
+       *)
+    let synth_pie : DepEv.t -> DepEv.t -> req_synth =
+      fun pos_elems neg_elems ->
+
+      (* precondition: ev not already in signed_conj *)
+      let include_neg_event ev signed_conj =
+        DepEvMap.fold (fun conj_ev sgn ->
+            DepEvMap.add (DepEv.add ev conj_ev) (not sgn)
+          ) signed_conj signed_conj in
+      
+      let pie_expansion = DepEv.fold include_neg_event
+          neg_elems (DepEvMap.singleton pos_elems true) in
+
+      DepEvMap.map_reduce
+        (fun conj_ev sgn ->
+           if sgn then (synth_var conj_ev) else
+             (synth_sub synth_zero (synth_var conj_ev)))
+        synth_add synth_zero pie_expansion
+    
     (** `separate` takes a DNF and expresses it as a sum, product, and difference
         of dependent events.
 
@@ -359,30 +385,19 @@ struct
       if DNF.is_one dnf then synth_one else
         (* returns a synthesizer for a dependent conjunction *)
         let synth_dep_conj : DNF.iset -> req_synth = fun dep_conj ->
-          let pos_conj, neg_conj = DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
+          let pos_conj, neg_conj =
+            DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
           (* now both pos_conj and neg_conj contain sets of derived events
              that are constant over their derivation index and their sign.
              So we can remove that information and lower them just to sets
              of events, guaranteed to be independent and of a single sign
              (that sign is pos for pos_conj and neg for neg_conj *)
-          let full_elems, pos_elems, neg_elems =
-            D.lower_to_set dep_conj,
+          let pos_elems, neg_elems =
             D.lower_to_set pos_conj,
             D.lower_to_set neg_conj in
-          (* handle some special cases *)
-          if D.S.is_empty neg_elems then
-            (synth_var pos_elems) else
-          if D.S.is_empty pos_elems then
-            (synth_sub synth_one (synth_var neg_elems)) else
-          if not (D.S.is_empty (D.S.inter pos_elems neg_elems)) then
-            (synth_zero)
-          else
-            (* now each of pos_elems and neg_elems contain nonempty sets of events.
-               The correct arithmetic to compute the probability of the original
-               conjunction under consideration is the difference
-               in probabilities of the full conjunction and the negative component *)
-            (* this corresponds to ℙ(AB̄) = ℙ(A) - ℙ(AB) *)
-            synth_sub (synth_var pos_elems) (synth_var full_elems) in
+          (* to compute the probability of this dependent conjunction, we
+             need to apply PIE *)
+          synth_pie pos_elems neg_elems in
 
         (* returns a synthesizer for an arbitrary conjunction by splitting
              it into dependent conjunctions *)

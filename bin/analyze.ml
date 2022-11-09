@@ -139,7 +139,7 @@ struct
   type omega = Omega.t
 
 
-  (*
+  (**
      The work performed to derive Phi and to derive Beta is very similar
      in that it involves equations over Pi and Phi. Similarly, the work
      performed to derive Eta and Omega is vert similar in that it involves
@@ -149,7 +149,11 @@ struct
      both. For each of PiPhi and BetaEta, one layer is computed directly
      and one computed indirectly. The Direct and Indirect submodules capture
      the respective work for each layer.
-     *)
+
+     The two types of objects represented
+     in DNF formulas for a given DisjunctiveWorkhorse are termed the Sequel
+     and the Original. 
+     **)
   module DisjunctiveWorkhorse
       (OriginalElt : DepHashT) (SequelElt: DepHashT) =
   struct
@@ -166,6 +170,11 @@ struct
 
     module OriginalMap = Map(Original)
 
+    (**
+       Indirect captures the semantics of indirection computation.
+       For a given point in the sequel module, and a DNF formula over
+       original and se
+    *)
     module Indirect =
     struct
       module SequelEqnSystem = Equations.EqnSystem(Sequel)

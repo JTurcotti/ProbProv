@@ -61,6 +61,21 @@ struct
     | None -> unit
     | Some (k, v) -> fold (fun k v -> reduce (map k v)) (remove k t) (map k v)
 
+
+  let lift_format format_k format_v infix unit :
+    Format.formatter -> 'a t -> unit =
+    fun ff mp ->
+    if is_empty mp then Format.fprintf ff "%s" unit
+    else (
+      let old = !first in
+      first := true;
+      iter (fun k v ->
+          Format.fprintf ff "%s" (check_first_s infix);
+          Format.fprintf ff "(%a:%a)" format_k k format_v v) mp;
+      first := old
+    )
+
+
 end
 
 type ('l, 'r) union_t = Left of 'l | Right of 'r

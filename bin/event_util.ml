@@ -39,7 +39,7 @@ struct
 
   module Set = Set(T)
 
-  type t = Set.t
+  include Set
   type elt = Elt.t
 
   (**
