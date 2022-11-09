@@ -664,6 +664,8 @@ struct
       Format.fprintf ff "\027[1m\027[38;2;%d;%d;%dm%c\027[0m" r g b c
 
     let format_rgb_float ff (r, g, b) f =
+      (* this looks silly but prevents negative zero from being displayed *)
+      let f = if f = 0.0 then 0.0 else f in
       Format.fprintf ff "\027[38;2;%d;%d;%dm%f\027[0m" r g b f
 
     let format_rgb_str ff (r, g, b) s =
