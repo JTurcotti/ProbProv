@@ -103,17 +103,25 @@ struct
   let const_expr f = Const(f)
   let var_expr v = Var(v)
   let mult_expr e1 e2 =
+    (* encode some basic laws of arithmetic *)
     match e1, e2 with
     | Mult e1l, Mult e2l -> Mult (List.append e1l e2l)
-    | Mult e1l, e2 -> Mult (e2 :: e1l)
-    | e1, Mult e2l -> Mult (e1 :: e2l)
+    | Mult _, Const 0.0
+    | Const 0.0, Mult _ -> Const 0.0
+    | Mult el, Const 1.0
+    | Const 1.0, Mult el -> Mult el
+    | Mult el, e
+    | e, Mult el -> Mult (e :: el)
     | Const(f1), Const(f2) -> Const(f1 *. f2)
     | e1, e2 -> Mult [e1; e2]
   let add_expr e1 e2 =
+    (* encode some basic laws of arithmetic *)
     match e1, e2 with
     | Add e1l, Add e2l -> Add (List.append e1l e2l)
-    | Add e1l, e2 -> Add (e2 :: e1l)
-    | e1, Add e2l -> Add (e1 :: e2l)
+    | Const 0.0, Add el
+    | Add el, Const 0.0 -> Add el
+    | Add el, e 
+    | e, Add el -> Add (e :: el)
     | Const(f1), Const(f2) -> Const(f1 +. f2)
     | e1, e2 -> Add [e1; e2]
 
