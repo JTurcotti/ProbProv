@@ -7,6 +7,7 @@ struct
   let output_file = ref ""
   let verbose = ref false
   let simple_parse = ref false
+  let restrict_to_func = ref ""
 
   let anon_fun _ =
     raise (Arg.Bad "run takes no anonymous arguments")
@@ -15,6 +16,7 @@ struct
     [("-v", Arg.Set verbose, "Output debug information");
      ("-s", Arg.Set simple_parse, "Simple parse without complex desugarings");
      ("-i", Arg.Set_string input_file, "Set input file name");
+     ("-r", Arg.Set_string restrict_to_func, "Restrict to a single function's Ω");
      ("-o", Arg.Set_string output_file, "Set output file name")]
 end
 
@@ -39,11 +41,14 @@ include Analyze.ProgramAnalyzer (struct
     let get _ = typechecked_prog
   end)
 
+open Blame_prim
 
-(*let rgb_control r g b =
-  Format.sprintf "\027[38;2;%d;%d;%dm" r g b*)
+let filter {dbf_src=_; dbf_tgt={bt_func=Func(f_s); bt_ret=_}} =
+  match !IO.restrict_to_func with
+  | "" -> true
+  | s -> f_s = s
     
-let computed_omegas = Output.get_program_blame (fun _ -> true)
+let computed_omegas = Output.get_program_blame filter
 
 let () = Output.VeryPrettyPrint.format_program Format.std_formatter
     !IO.input_file typechecked_prog computed_omegas

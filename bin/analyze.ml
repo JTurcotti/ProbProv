@@ -628,7 +628,10 @@ struct
     *)
     let get_program_blame filter =
       POmegas (OmegaComputationLayer.compute (
-          OmegaSet.filter filter (get_all_prog_omegas())
+          OmegaSet.filter
+            (fun omega ->
+               filter (Omega.choose omega))
+            (get_all_prog_omegas())
         ))
 
     exception NonSingletonOmegaResponse

@@ -10,6 +10,7 @@
 %token <int * int> CONST
 %token <int * int> BINOP
 %token <int * int> UNOP
+%token <int * int> DOT
 %token LPAREN RPAREN LBRACE RBRACE EQ IF ELSE SEMI SKIP DEF EOF TO ASSERT BY COMMA
 
 %start main
@@ -63,6 +64,7 @@ aexp:
   | IDENT {match $1 with (str, s, e) -> make_raw_aexp (Raw_Var(str)) s e}
   | CONST {match $1 with (s, e) -> make_raw_aexp Raw_Const s e}
   | UNOP aexp {match $1 with (s, e) -> make_raw_aexp (Raw_Unop($2)) s e}
+  | aexp DOT IDENT {match $2, $3 with (s, _), (_, _, e) -> make_raw_aexp (Raw_Unop($1)) s e}
   | aexp BINOP aexp {match $2 with (s, e) -> make_raw_aexp (Raw_Binop($1, $3)) s e}
   | IDENT LPAREN aexps RPAREN {match $1 with (str, s, e) ->
 				 make_raw_aexp (Raw_FApp(str, $3)) s e}

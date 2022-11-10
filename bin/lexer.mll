@@ -6,7 +6,7 @@ exception FAIL
 rule token = parse
      | [' ' '\t' '\n'] {token lexbuf}
      | ("//" | '#')[^'\n']* {token lexbuf}
-     | ['0'-'9']+ {
+     | ['0'-'9']+ | "true" | "false" | "null" {
        CONST(Lexing.lexeme_start lexbuf, Lexing.lexeme_end lexbuf)
        }
      |	'(' {LPAREN}
@@ -20,6 +20,9 @@ rule token = parse
        }
      |	'!' {
      	UNOP(Lexing.lexeme_start lexbuf, Lexing.lexeme_end lexbuf)
+	}
+     | '.' {
+        DOT(Lexing.lexeme_start lexbuf, Lexing.lexeme_end lexbuf)
 	}
      |  '=' {EQ}
      |	"->" {TO}
