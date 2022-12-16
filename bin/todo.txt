@@ -1,0 +1,10 @@
+Major:
+1) Prevent duplicate calls to layers as a result of Beta-Eta aggregation
+2) Learn about belief propagation to more effeciently make DNFs computable
+3) Handle unread args and unwritten-to results gracefully (right now just
+   get "exception Not_found"
+
+
+
+Minor:
+Add info about test being run to global log
