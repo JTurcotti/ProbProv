@@ -376,18 +376,8 @@ struct
              if sgn then (synth_var conj_ev) else
                (synth_sub synth_zero (synth_var conj_ev)))
           synth_add synth_zero pie_expansion
-          
-    (** `separate` takes a DNF and expresses it as a sum, product, and difference
-        of dependent events.
-        
-        It returns the list of dependent events involved in the computation,
-        and a synthesizer corresponding to the computation.
-        
-        PRECONDITION: This should only be called on conjunction-coexclusive DNFs *)
-    let separate : DNF.t -> req_synth = fun dnf ->
-      if DNF.is_zero dnf then synth_zero else
-      if DNF.is_one dnf then synth_one else
-        (* returns a synthesizer for a dependent conjunction *)
+
+            (* returns a synthesizer for a dependent conjunction *)
         let synth_dep_conj : DNF.iset -> req_synth = fun dep_conj ->
           let pos_conj, neg_conj =
             DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
@@ -401,7 +391,7 @@ struct
             D.lower_to_set neg_conj in
           (* to compute the probability of this dependent conjunction, we
              need to apply PIE *)
-          synth_pie pos_elems neg_elems in
+          synth_pie pos_elems neg_elems
 
         (* returns a synthesizer for an arbitrary conjunction by splitting
              it into dependent conjunctions *)
@@ -414,9 +404,45 @@ struct
                 ) hashed_ev
             ) conj DHashMap.empty in
           DHashMap.map_reduce
-            (fun _ -> synth_dep_conj) synth_mult synth_one hashed_ev in
+            (fun _ -> synth_dep_conj) synth_mult synth_one hashed_ev 
+
+          
+    (** `separate` takes a DNF and expresses it as a sum, product, and difference
+        of dependent events.
+        
+        It returns the list of dependent events involved in the computation,
+        and a synthesizer corresponding to the computation.
+        
+        PRECONDITION: This should only be called on conjunction-coexclusive DNFs *)
+    let separate : DNF.t -> req_synth = fun dnf ->
+      if DNF.is_zero dnf then synth_zero else
+      if DNF.is_one dnf then synth_one else
         DNF.OuterSet.map_reduce separate_conj synth_add synth_zero dnf
 
+    (**
+       `synth_by_pie` uses PIE to expand a DNF formula
+    *)
+    let rec synth_by_pie : DNF.t -> req_synth = fun dnf ->
+      if DNF.is_zero dnf then synth_zero else
+        let rec powerset dnf =
+          if DNF.is_zero dnf then [(0, [])] else
+            let fst_term = DNF.OuterSet.choose dnf in
+            let rem_terms = DNF.OuterSet.remove fst_term dnf in
+            let rem_powerset = powerset rem_terms in
+            rem_powerset @ List.map
+              (fun (parity, elems) -> (1 - parity, fst_term :: elems))
+              rem_powerset in
+        let powerset_reduced_terms = List.filter_map
+            (fun (parity, elems) ->
+               match elems with
+               | [] -> None
+               | _ -> Some (
+                   let elems_reduced = list_map_reduce_nonempty separate_conj synth_mult elems in
+                   if parity = 1 then elems_reduced else
+                     (synth_sub synth_zero elems_reduced)
+                 )) (powerset dnf) in
+        list_map_reduce_nonempty id synth_add powerset_reduced_terms
+    
     (**
        THIS IS THE MAIN ENTRY POINT
 
@@ -426,8 +452,6 @@ struct
     let dnf_to_req_synth : DNF.t -> req_synth = fun dnf ->
       dnf
       |> DNF.eliminate_subsumption (* TODO - test how necessary these really are *)
-      |> DNF.make_computable
-      |> DNF.eliminate_subsumption
-      |> separate
+      |> synth_by_pie
   end
 end

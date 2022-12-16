@@ -559,6 +559,14 @@ struct
                       Logger.Loggers.OmegaLogger.fprint_t omega
                       BetaEta.dnf_format dnf) in
 
+(*      let dnf_comp = dnf |> DNF.eliminate_subsumption
+                     |> DNF.make_computable
+                     |> DNF.eliminate_subsumption
+                     |> DNF.eliminate_subsumption in
+
+      let () = log (Format.asprintf "\tCompute(%a) served by COMPUTABLE DNF: %a"
+                      Logger.Loggers.OmegaLogger.fprint_t omega
+                      BetaEta.dnf_format dnf_comp) in*)
 
       BetaEta.Direct.derive_float dnf
   end
