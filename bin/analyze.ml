@@ -684,9 +684,11 @@ struct
         
     let format_plain_char ff c =
       Format.fprintf ff "%c" c
+
+    let bad_omega_thresh = 0.0001
         
     let scale_heat_color vl =
-      if vl < 0.0 || vl > 1.0 then (
+      if vl < 0.0  -. bad_omega_thresh || vl > 1.0 +. bad_omega_thresh then (
         bad_omega_detected := true;
         (0xff, 0xfc, 0x00)
       ) else (
