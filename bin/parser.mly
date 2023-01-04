@@ -4,6 +4,13 @@
 
     let make_raw_aexp d s e : raw_aexp =
       {data=d; start_pos=s; end_pos=e}
+
+    let desugar_fld_assign (obj_str, obj_s, obj_e) (dot_s, _) (_, _, fld_e) v : raw_expr =
+      let obj_aexp = make_raw_aexp (Raw_Var(obj_str)) obj_s obj_e in
+      let obj_and_fld = make_raw_aexp (Raw_Unop(obj_aexp)) dot_s fld_e in
+      let obj_and_fld_and_val = make_raw_aexp (Raw_Binop(obj_and_fld, v)) dot_s fld_e in
+      Raw_Assign(obj_str, obj_and_fld_and_val)
+      
 %}
 
 %token <string * int * int> IDENT
@@ -47,7 +54,9 @@ two_or_more_idents: IDENT COMMA IDENT {(fst $1) :: (fst $3) :: []}
 expr:
   | SKIP {Raw_Skip}
   | IF aexp LBRACE expr RBRACE ELSE LBRACE expr RBRACE {Raw_Cond($2, $4, $8)}
+  | IF aexp LBRACE expr RBRACE  {Raw_Cond($2, $4, Raw_Skip)}
   | IDENT EQ aexp {Raw_Assign(fst $1, $3)}
+  | IDENT DOT IDENT EQ aexp {desugar_fld_assign $1 $2 $3 $5}
   | two_or_more_idents EQ aexp {Raw_FAssign($1, $3)}
   | expr SEMI expr {Raw_Seq($1, $3)}
   | ASSERT IDENT BY aexp {Raw_Assert(fst $2, $4)}
