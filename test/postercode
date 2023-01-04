@@ -1,0 +1,47 @@
+def build_room(prior_room, request) -> room {
+    room = {};
+    room.doors = prior_room;
+    room.room_type = request.room_type;
+    if request.budget > 10000 {
+        room.ceiling_height_meters = 4
+    } else {
+        room.ceiling_height_meters = 3
+    };
+    if request.room_type == "bedroom" {
+        room.width_meters = 7;
+        room.length_meters = 5;
+        if request.budget > 5200 {
+            master_bath = {};
+            master_bath.budget = 2300;
+            master_bath.room_type = "bathroom";
+            room.doors = room.doors + build_room(room, master_bath)
+        }
+    };
+    if request.room_type == "bathroom" {
+        room.width_meters = 2;
+        room.length_meters = 3;
+        room.needs_plumbing = true
+    };
+    if request.room_type == "hall" {
+        if request.budget / 2 > 3000 {
+            bedroom = {};
+            bedroom.budget = request.budget / 3;
+            bedroom.room_type = "bedroom";
+            room.doors = room.doors + build_room(room, bedroom);
+            request.budget = request.budget - bedroom.budget
+        };
+        if request.budget / 3 > 1000 {
+            bathroom = {};
+            bathroom.budget = request.budget / 3;
+            bathroom.room_type = "bathroom";
+            room.doors = room.doors + build_room(room, bathroom);
+            request.budget = request.budget - bathroom.budget
+        };
+        if request.budget > 5000 {
+            next_hall = {};
+            next_hall.budget = request.budget;
+            next_hall.room_type = "hall";
+            room.doors = room.doors + build_room(room, next_hall)
+        }
+    }
+}
