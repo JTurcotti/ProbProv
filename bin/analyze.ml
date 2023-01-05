@@ -686,16 +686,18 @@ struct
       Format.fprintf ff "%c" c
 
     let bad_omega_thresh = 0.0001
+
+    let heat_r, heat_g, heat_b = 0xff, 0x30, 0x30
+    let err_r, err_g, err_b = 0xff, 0xfc, 0x00
         
     let scale_heat_color vl =
       if vl < 0.0  -. bad_omega_thresh || vl > 1.0 +. bad_omega_thresh then (
         bad_omega_detected := true;
-        (0xff, 0xfc, 0x00)
+        (err_r, err_g, err_b)
       ) else (
-        let r, g, b = 0xff, 0x30, 0x30 in
         let scale i =
           Float.to_int (255. -. vl *. (255. -. (Float.of_int i))) in
-        (scale r, scale g, scale b))
+        (scale heat_r, scale heat_g, scale heat_b))
         
     let format_by_float ff vl c =
       format_rgb_char ff (scale_heat_color vl) c

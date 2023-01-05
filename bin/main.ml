@@ -8,6 +8,7 @@ struct
   let verbose = ref false
   let simple_parse = ref false
   let restrict_to_func = ref ""
+  let target_assertions = ref false
 
   let anon_fun _ =
     raise (Arg.Bad "run takes no anonymous arguments")
@@ -17,7 +18,9 @@ struct
      ("-s", Arg.Set simple_parse, "Simple parse without complex desugarings");
      ("-i", Arg.Set_string input_file, "Set input file name");
      ("-r", Arg.Set_string restrict_to_func, "Restrict to a single function's Ω");
-     ("-o", Arg.Set_string output_file, "Set output file name")]
+     ("-o", Arg.Set_string output_file, "Set output file name");
+     (* TODO: implement -a *)
+     ("-a", Arg.Set target_assertions, "Output blame for assertions instead of function results")]
 end
 
 
@@ -43,16 +46,20 @@ include Analyze.ProgramAnalyzer (struct
 
 open Blame_prim
 
+(* choose which omega to output *)
 let filter {dbf_src=_; dbf_tgt={bt_func=Func(f_s); bt_ret=_}} =
-  match !IO.restrict_to_func with
-  | "" -> true
-  | s -> f_s = s
-    
+  match (!IO.target_assertions, !IO.restrict_to_func) with
+  | (_, "") -> true
+  | (_, s) -> f_s = s
+
+(* compute the omegas *)
 let computed_omegas = Output.get_program_blame filter
 
+(* pretty print the functions with blames *)
 let () = Output.VeryPrettyPrint.format_program Format.std_formatter
     !IO.input_file typechecked_prog computed_omegas
 
+(* pretty print the raw omegas *)
 let () = Format.fprintf Format.std_formatter
     "%a" Output.format_program_blame computed_omegas
   
