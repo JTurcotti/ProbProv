@@ -1,4 +1,5 @@
 def build_room(prior_room, request) -> room {
+def is_valid(x) -> y { y = x }
     room = {};
     room.doors = prior_room;
     room.room_type = request.room_type;
@@ -43,5 +44,6 @@ def build_room(prior_room, request) -> room {
             next_hall.room_type = "hall";
             room.doors = room.doors + build_room(room, next_hall)
         }
-    }
+    };
+    assert room by is_valid(room)
 }
