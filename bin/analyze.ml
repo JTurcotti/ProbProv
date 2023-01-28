@@ -559,14 +559,14 @@ struct
                       Logger.Loggers.OmegaLogger.fprint_t omega
                       BetaEta.dnf_format dnf) in
 
-(*      let dnf_comp = dnf |> DNF.eliminate_subsumption
-                     |> DNF.make_computable
-                     |> DNF.eliminate_subsumption
-                     |> DNF.eliminate_subsumption in
+      (*      let dnf_comp = dnf |> DNF.eliminate_subsumption
+                           |> DNF.make_computable
+                           |> DNF.eliminate_subsumption
+                           |> DNF.eliminate_subsumption in
 
-      let () = log (Format.asprintf "\tCompute(%a) served by COMPUTABLE DNF: %a"
-                      Logger.Loggers.OmegaLogger.fprint_t omega
-                      BetaEta.dnf_format dnf_comp) in*)
+              let () = log (Format.asprintf "\tCompute(%a) served by COMPUTABLE DNF: %a"
+                            Logger.Loggers.OmegaLogger.fprint_t omega
+                            BetaEta.dnf_format dnf_comp) in*)
 
       BetaEta.Direct.derive_float dnf
   end
@@ -590,7 +590,7 @@ struct
        if any omegas outside [0, 1] are detected, indicating
        an internal error *)
     let bad_omega_detected = ref false
-    
+
     type program_omegas = POmegas of float OmegaMap.t
 
     (* messy function, aggregates all direct blame flows for a program
@@ -681,16 +681,16 @@ struct
 
     let format_rgb_str ff (r, g, b) s =
       Format.fprintf ff "\027[38;2;%d;%d;%dm%s\027[0m" r g b s
-        
+
     let format_plain_char ff c =
       Format.fprintf ff "%c" c
 
     let bad_omega_thresh = 0.0001
 
-    
+
     let heat_color = Colors.trad_heat
     let err_color = Colors.err_yellow
-        
+
     let scale_heat_color vl =
       if vl < 0.0  -. bad_omega_thresh || vl > 1.0 +. bad_omega_thresh then (
         bad_omega_detected := true;
@@ -699,10 +699,10 @@ struct
         let scale i =
           Float.to_int (255. -. vl *. (255. -. (Float.of_int i))) in
         (scale heat_color.r, scale heat_color.g, scale heat_color.b))
-        
+
     let format_by_float ff vl c =
       format_rgb_char ff (scale_heat_color vl) c
-        
+
     let format_float_by_float ff vl =
       format_rgb_float ff (scale_heat_color vl) vl
 
@@ -744,7 +744,7 @@ struct
           (tprog : Typecheck.typechecked_program) omegas =
 
         let format_func_ret func ret dbsm = (
-          
+
           let format_func_ret_dbs ff dbs =
             format_by_float ff (
               match DBSMap.find_opt dbs dbsm with
@@ -759,41 +759,48 @@ struct
             format_func_ret_dbs ff (DBlameArg (func, arg)) in
 
           let format_func_ret_ret ff (func2, ret2) =
-              if (func2, ret2) = (func, ret) then            
-                format_rgb_char ff (0, 255, 0) else
-                format_plain_char ff in
+            if (func2, ret2) = (func, ret) then            
+              format_rgb_char ff (0, 255, 0) else
+              format_plain_char ff in
+
+          let line_num = ref (2) in
+          let get_line _ = let i = !line_num in line_num := i + 1; i in
 
           let format_char i c =
-            if c = '\n' then Format.fprintf ff "\n│  " else
-            match
-              Expr.IntMap.find_opt i tprog.label_tbl,
-              Expr.IntMap.find_opt i tprog.arg_tbl,
-              Expr.IntMap.find_opt i tprog.ret_tbl
-            with
-            | Some l, _, _ ->
-              (* it's labelled *)
-              format_func_ret_label ff l c
-            | None, Some fa, _ ->
-              (* it's an arg *)
-              format_func_ret_arg ff fa c
-            | None, None, Some fr ->
-              (* it's a ret *)
-              format_func_ret_ret ff fr c
-            | None, None, None ->
-              format_plain_char ff c in
+            if c = '\n' then
+              let i = get_line () in
+              let space_opt = if i < 10 then " " else "" in
+              Format.fprintf ff "\n│ %s%d  " space_opt i
+            else
+              match
+                Expr.IntMap.find_opt i tprog.label_tbl,
+                Expr.IntMap.find_opt i tprog.arg_tbl,
+                Expr.IntMap.find_opt i tprog.ret_tbl
+              with
+              | Some l, _, _ ->
+                (* it's labelled *)
+                format_func_ret_label ff l c
+              | None, Some fa, _ ->
+                (* it's an arg *)
+                format_func_ret_arg ff fa c
+              | None, None, Some fr ->
+                (* it's a ret *)
+                format_func_ret_ret ff fr c
+              | None, None, None ->
+                format_plain_char ff c in
           let char_num = ref 0 in
           let get_char _ = let i = !char_num in char_num := i + 1; i in
           let ic = open_in input_file in
           Format.fprintf ff "\n";
           let () = match func, ret with Func f, Ret(i, s) -> (
               Format.fprintf ff
-                "┌─╼ Blame Map for '%s', result %d '%s' \n│  \n│  "
+                "┌─╼ Blame Map for '%s', result %d '%s' \n│  \n│  1  "
                 f i s) in
           let () = try
-            while true do
-              let c = input_char ic in
-              format_char (get_char ()) c
-            done;
+              while true do
+                let c = input_char ic in
+                format_char (get_char ()) c
+              done;
             with End_of_file -> () in
           Format.fprintf ff
             "\n└───────────────────────╼\n") in
