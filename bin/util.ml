@@ -62,6 +62,12 @@ struct
 
   let lift_hash hash_elt t =
     Hashtbl.hash (fold (fun el h -> h + hash_elt el) t 0)
+
+  (**
+    returns a set containining (op e1 e2) for all e1 in s1 and e2 in s2
+  *)
+  let prod op s1 s2 =
+    map_reduce (fun e1 -> map (op e1) s2) union empty s1
 end
 
 module Map (T : T) =

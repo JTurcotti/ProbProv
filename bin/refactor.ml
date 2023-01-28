@@ -422,7 +422,7 @@ struct
     (**
        `synth_by_pie` uses PIE to expand a DNF formula
     *)
-    let rec synth_by_pie : DNF.t -> req_synth = fun dnf ->
+    let synth_by_pie : DNF.t -> req_synth = fun dnf ->
       if DNF.is_zero dnf then synth_zero else
         let rec powerset dnf =
           if DNF.is_zero dnf then [(0, [])] else

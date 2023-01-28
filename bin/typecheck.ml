@@ -207,7 +207,13 @@ let typecheck_fdecl prog fdecl : context option =
                  (*|> Context.Refactor.refactorize_context*)
                  |> Context.Refactor.context_reduce
                  |> filter_phantom_ret)
-    
+
+(**
+   provides a complete typechecked program. Functions are mapped to
+   their declarations and a `context` if they were successfully typechecked.
+   The remaining maps provide source-file-byte-indexed information about
+   what is represented by each byte for pretty printing
+   *)
 type typechecked_program = {tfunc_tbl: (fdecl * context option) FuncMap.t;
                             label_tbl: label IntMap.t;
                             arg_tbl: (func * arg) IntMap.t;
