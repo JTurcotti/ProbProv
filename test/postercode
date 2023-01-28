@@ -1,9 +1,9 @@
 def build_room(prior_room, request) -> room {
-def is_valid(x) -> y { y = x }
     room = {};
     room.doors = prior_room;
     room.room_type = request.room_type;
-    if request.budget > 10000 {
+    budget_remaining = request.budget;
+    if budget_remaining > 10000 {
         room.ceiling_height_meters = 4
     } else {
         room.ceiling_height_meters = 3
@@ -11,7 +11,7 @@ def is_valid(x) -> y { y = x }
     if request.room_type == "bedroom" {
         room.width_meters = 7;
         room.length_meters = 5;
-        if request.budget > 5200 {
+        if budget_remaining > 5200 {
             master_bath = {};
             master_bath.budget = 2300;
             master_bath.room_type = "bathroom";
@@ -24,26 +24,34 @@ def is_valid(x) -> y { y = x }
         room.needs_plumbing = true
     };
     if request.room_type == "hall" {
-        if request.budget / 2 > 3000 {
+        if budget_remaining / 2 > 3000 {
             bedroom = {};
-            bedroom.budget = request.budget / 3;
+            bedroom.budget = budget_remaining / 3;
             bedroom.room_type = "bedroom";
             room.doors = room.doors + build_room(room, bedroom);
-            request.budget = request.budget - bedroom.budget
+            budget_remaining = budget_remaining - bedroom.budget
         };
-        if request.budget / 3 > 1000 {
+        if budget_remaining / 3 > 1000 {
             bathroom = {};
-            bathroom.budget = request.budget / 3;
+            bathroom.budget = budget_remaining / 3;
             bathroom.room_type = "bathroom";
             room.doors = room.doors + build_room(room, bathroom);
-            request.budget = request.budget - bathroom.budget
+            budget_remaining = budget_remaining - bathroom.budget
         };
-        if request.budget > 5000 {
+        if budget_remaining > 5000 {
             next_hall = {};
-            next_hall.budget = request.budget;
+            next_hall.budget = budget_remaining;
             next_hall.room_type = "hall";
-            room.doors = room.doors + build_room(room, next_hall)
+            next_hall_built = build_room(room, next_hall);
+            room.doors = room.doors + next_hall_built;
+            budget_remaining = budget_remaining - cost_of(next_hall_built) 
+                
         }
-    };
-    assert room by is_valid(room)
+    }
 }
+
+def is_valid(x) -> y { y = x }
+
+def cost_of(x) -> y { y = x }
+
+

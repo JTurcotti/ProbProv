@@ -687,17 +687,18 @@ struct
 
     let bad_omega_thresh = 0.0001
 
-    let heat_r, heat_g, heat_b = 0xff, 0x30, 0x30
-    let err_r, err_g, err_b = 0xff, 0xfc, 0x00
+    
+    let heat_color = Colors.trad_heat
+    let err_color = Colors.err_yellow
         
     let scale_heat_color vl =
       if vl < 0.0  -. bad_omega_thresh || vl > 1.0 +. bad_omega_thresh then (
         bad_omega_detected := true;
-        (err_r, err_g, err_b)
+        (err_color.r, err_color.g, err_color.b)
       ) else (
         let scale i =
           Float.to_int (255. -. vl *. (255. -. (Float.of_int i))) in
-        (scale heat_r, scale heat_g, scale heat_b))
+        (scale heat_color.r, scale heat_color.g, scale heat_color.b))
         
     let format_by_float ff vl c =
       format_rgb_char ff (scale_heat_color vl) c
