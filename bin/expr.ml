@@ -6,6 +6,10 @@ let func_to_string (Func s) = s
 type local = Local of string
 let local_to_string (Local s) = s
 
+module LocalT = struct type t = local end
+module LocalMap = Map(LocalT)
+module LocalSet = Set(LocalT)
+
 (* these types contain a bit of redundancy - the int is the number
    of the art/ret and the string is the name *)
 type arg = Arg of int * string
@@ -45,7 +49,7 @@ type expr =
   | Skip
   | Cond of aexp * expr * expr * branch
   | Assign of local * aexp
-  | FAssign of (local list) * aexp
+  | FAssign of (local list) * aexp (* multi-assign to a function result *)
   | Seq of expr * expr
   | Assert of local * aexp
   | AExp of aexp
@@ -56,7 +60,7 @@ type fdecl = {
   num_params: int;
   results: ret list;
   num_results: int;
-  body: expr;
+  body: expr; (* the meat *)
 }
 
 module Func = struct
@@ -224,3 +228,14 @@ let rec expr_branches : expr -> BranchSet.t =
       (expr_branches e1)
       (expr_branches e2)
   | _ -> BranchSet.empty
+
+let rec aexp_locals : aexp -> LocalSet.t =
+  function
+  | Var (l, _) -> LocalSet.singleton l
+  | Const _ -> LocalSet.empty
+  | Binop (a1, a2, _) -> LocalSet.union
+                           (aexp_locals a1)
+                           (aexp_locals a2)
+  | Unop (a, _) -> aexp_locals a
+  | FApp (_, al, _, _) ->
+    list_map_reduce aexp_locals LocalSet.union LocalSet.empty al
