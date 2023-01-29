@@ -738,6 +738,30 @@ struct
             func format_rm (func, rm)
       ) sorted_omegas
 
+    module SimplePrettyPrint =
+    struct
+      let format_program ff input_file
+          (label_tbl : Expr.label Expr.IntMap.t)
+          (label_set : Expr.LabelSet.t) =
+
+        let format_char i c =
+          match Expr.IntMap.find_opt i label_tbl with
+          | None -> format_plain_char ff c
+          | Some l -> if Expr.LabelSet.mem l label_set then
+              format_by_float ff 1.0 c else
+              format_plain_char ff c in
+        
+        let char_num = ref 0 in
+        let get_char _ = let i = !char_num in char_num := i + 1; i in
+        let ic = open_in input_file in
+        try
+            while true do
+              let c = input_char ic in
+              format_char (get_char ()) c
+            done;
+          with End_of_file -> ()
+    end
+
     module VeryPrettyPrint =
     struct
       let format_program ff input_file

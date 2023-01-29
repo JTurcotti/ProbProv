@@ -3,6 +3,7 @@ open Typecheck
 open Util
 
 type local_set = LocalSet.t
+type label_set = LabelSet.t
 
 exception InterferencePathFailure of string
 
@@ -59,6 +60,17 @@ type branch_tree =
       * branch_tree (* right subtree (branch not taken) *)
   | Leaf of
       subtrace_set (* the subtraces that lead to this leaf *)
+
+(** trace_labels takes a trace and returns the labels of all
+    aexprs contained in the trace (useful for displaying trace)
+*)
+let rec trace_labels (t : trace) : label_set =
+  match t with
+  | [] -> LabelSet.empty
+  | AssignEntry(_, a, _) :: t'
+  | BranchEntry(a, _, _, _) :: t'-> LabelSet.union
+                                      (aexpr_labels a)
+                                      (trace_labels t')
 
 module OptLabelMap = Map(struct type t = label option end)
 
@@ -326,11 +338,5 @@ and refine_trace_set (src : local) (tgts : local_set) (ts : trace_set) : trace_s
   |> compute_branch_tree
   |> compute_interference_paths src
 
-module TraceAnalyzer (Arg : sig val prog : typechecked_program end) =
-struct
-  include Arg
-
-  let 
-
-end
-  
+let compute_interference_flows (e : expr) (src: local) (tgt: local) : trace_set =
+  refine_trace_set src (LocalSet.singleton tgt) (compute_trace_set e)
