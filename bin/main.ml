@@ -106,3 +106,59 @@ struct
       ()
     )
 end
+
+module TestPIE =
+struct
+  (* TODO: Test PIE more *)
+  let run_tests = false
+  
+  module String = 
+  struct
+    type t = string
+    type hash_t = unit
+    let hash _ = ()
+  end
+
+  module StrDDS = Refactor.DerivedDoubleSet(String)
+  let fmt = Format.asprintf "{%a}" (StrDDS.DepEv.Set.lift_format
+                                   (fun ff -> Format.fprintf ff "%s") ", " "0")
+  module DNF = StrDDS.DNF
+
+  let of_str s = DNF.singleton {el=s; ind=0; sgn=true}
+  let of_str_neg s = DNF.singleton {el=s; ind=0; sgn=false}
+
+  module StrArith = 
+  struct
+    type t = string
+    let mult = Format.sprintf "(%s * %s)"
+    let add = Format.sprintf "(%s + %s)"
+    let sub = Format.sprintf "(%s - %s)"
+    let one = "1"
+    let zero = "0"
+  end
+
+  module StrArithSynth = StrDDS.ArithSynth(StrArith)
+
+  let print_compute_ex ex = 
+    let req, synth = StrArithSynth.dnf_to_req_synth ex in
+    let req_repr : string =
+      Format.asprintf "{%a}"
+        (StrArithSynth.DepEvSet.lift_format
+           (fun ff e -> Format.fprintf ff "%s" (fmt e)) ", " "0") req in 
+    let synth_repr : string = synth fmt in
+    Format.printf "\n%s -> [%s]\n" req_repr synth_repr
+
+  let () = if not run_tests then () else 
+      let () = print_compute_ex (DNF.disj
+                                   (DNF.conj (of_str "a") (of_str "b"))
+                                   (DNF.conj (of_str_neg "a") (of_str "b"))) in
+      let () = print_compute_ex (DNF.disj
+                                   (DNF.conj (of_str "a") (of_str "b"))
+                                   (of_str_neg "a")) in
+      let () = print_compute_ex (DNF.disj
+                                   (DNF.conj (of_str "a") (of_str "b"))
+                                   (of_str "a")) in
+      let () = print_compute_ex (DNF.conj (of_str "a") (of_str_neg "b")) in
+      let () = print_compute_ex (DNF.conj (of_str "a") (of_str "b")) in
+      ()
+end

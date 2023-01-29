@@ -367,58 +367,58 @@ struct
           DepEvMap.fold (fun conj_ev sgn ->
               DepEvMap.add (DepEv.add ev conj_ev) (not sgn)
             ) signed_conj signed_conj in
-        
+
         let pie_expansion = DepEv.fold include_neg_event
             neg_elems (DepEvMap.singleton pos_elems true) in
-        
+
         DepEvMap.map_reduce
           (fun conj_ev sgn ->
              if sgn then (synth_var conj_ev) else
                (synth_sub synth_zero (synth_var conj_ev)))
           synth_add synth_zero pie_expansion
 
-            (* returns a synthesizer for a dependent conjunction *)
-        let synth_dep_conj : DNF.iset -> req_synth = fun dep_conj ->
-          let pos_conj, neg_conj =
-            DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
-          (* now both pos_conj and neg_conj contain sets of derived events
-             that are constant over their derivation index and their sign.
-             So we can remove that information and lower them just to sets
-             of events, guaranteed to be independent and of a single sign
-             (that sign is pos for pos_conj and neg for neg_conj *)
-          let pos_elems, neg_elems =
-            D.lower_to_set pos_conj,
-            D.lower_to_set neg_conj in
-          (* to compute the probability of this dependent conjunction, we
-             need to apply PIE *)
-          synth_pie pos_elems neg_elems
+    (* returns a synthesizer for a dependent conjunction *)
+    let synth_dep_conj : DNF.iset -> req_synth = fun dep_conj ->
+      let pos_conj, neg_conj =
+        DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
+      (* now both pos_conj and neg_conj contain sets of derived events
+         that are constant over their derivation index and their sign.
+         So we can remove that information and lower them just to sets
+         of events, guaranteed to be independent and of a single sign
+         (that sign is pos for pos_conj and neg for neg_conj *)
+      let pos_elems, neg_elems =
+        D.lower_to_set pos_conj,
+        D.lower_to_set neg_conj in
+      (* to compute the probability of this dependent conjunction, we
+         need to apply PIE *)
+      synth_pie pos_elems neg_elems
 
-        (* returns a synthesizer for an arbitrary conjunction by splitting
-             it into dependent conjunctions *)
-        let separate_conj : DNF.iset -> req_synth = fun conj ->
-          let hashed_ev = DNF.InnerSet.fold (fun d hashed_ev ->
-              let hash = D.hash d in
-              DHashMap.update hash (function
-                  | None -> Some (DNF.InnerSet.singleton d)
-                  | Some s -> Some (DNF.InnerSet.add d s)
-                ) hashed_ev
-            ) conj DHashMap.empty in
-          DHashMap.map_reduce
-            (fun _ -> synth_dep_conj) synth_mult synth_one hashed_ev 
+    (* returns a synthesizer for an arbitrary conjunction by splitting
+         it into dependent conjunctions *)
+    let separate_conj : DNF.iset -> req_synth = fun conj ->
+      let hashed_ev = DNF.InnerSet.fold (fun d hashed_ev ->
+          let hash = D.hash d in
+          DHashMap.update hash (function
+              | None -> Some (DNF.InnerSet.singleton d)
+              | Some s -> Some (DNF.InnerSet.add d s)
+            ) hashed_ev
+        ) conj DHashMap.empty in
+      DHashMap.map_reduce
+        (fun _ -> synth_dep_conj) synth_mult synth_one hashed_ev 
 
-          
+
     (** `separate` takes a DNF and expresses it as a sum, product, and difference
         of dependent events.
-        
+
         It returns the list of dependent events involved in the computation,
         and a synthesizer corresponding to the computation.
-        
+
         PRECONDITION: This should only be called on conjunction-coexclusive DNFs *)
     let separate : DNF.t -> req_synth = fun dnf ->
       if DNF.is_zero dnf then synth_zero else
       if DNF.is_one dnf then synth_one else
         DNF.OuterSet.map_reduce separate_conj synth_add synth_zero dnf
-
+          
     (**
        `synth_by_pie` uses PIE to expand a DNF formula
     *)
@@ -437,7 +437,11 @@ struct
                match elems with
                | [] -> None
                | _ -> Some (
-                   let elems_reduced = list_map_reduce_nonempty separate_conj synth_mult elems in
+                   let elems_conj =
+                     list_map_reduce_nonempty
+                       id DNF.InnerSet.union elems in
+                   let elems_reduced =
+                     separate_conj elems_conj in
                    if parity = 1 then elems_reduced else
                      (synth_sub synth_zero elems_reduced)
                  )) (powerset dnf) in
