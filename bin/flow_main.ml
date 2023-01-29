@@ -14,6 +14,8 @@ let src, tgt = match List.hd fdecl.params, List.hd fdecl.results with
 
 open Interference_paths
 
+let () = debug_output := !Io.IO.verbose
+
 let all_flows = compute_trace_set fdecl.body
 let num_flows = TraceSet.cardinal all_flows
 

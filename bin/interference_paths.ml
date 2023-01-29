@@ -50,7 +50,7 @@ type trace_pos = {t: trace; pos: int}
 module TraceSet = Set(struct type t = trace end)
 type trace_set = TraceSet.t
 
-let format_trace_set = TraceSet.lift_format format_trace ", " "0"
+let format_trace_set = TraceSet.lift_format format_trace ",\n\t" "0"
 
 (**
    A subtrace is a trace along with an ascending list of
@@ -65,7 +65,7 @@ type subtrace = {
 
 let format_subtrace ff {underlying=t; filter=f; is_explicit=b} =
   Format.fprintf ff "%a[" format_trace t;
-  List.iter (Format.fprintf ff "%d") f;
+  List.iter (Format.fprintf ff "%d ") f;
   Format.fprintf ff "]%s" (if b then "E" else "")
 
 let subtrace_nth st n =
@@ -74,7 +74,7 @@ let subtrace_nth st n =
 module SubtraceSet = Set(struct type t = subtrace end)
 type subtrace_set = SubtraceSet.t
 
-let format_subtrace_set = SubtraceSet.lift_format format_subtrace ", " "0"
+let format_subtrace_set = SubtraceSet.lift_format format_subtrace ",\n\t" "0"
 
 (**
    A branch tree represents a prefix tree of subtraces
@@ -109,7 +109,7 @@ let format_opt_label ff = function
   | Some (Label i) -> Format.fprintf ff "L%d" i
 
 let format_partition =
-  OptLabelMap.lift_format format_opt_label format_subtrace_set ", " "0"
+  OptLabelMap.lift_format format_opt_label format_subtrace_set ",\n\t" "0"
 
 (**
    Split a subtrace_set into partitions based on the label of the
@@ -152,7 +152,8 @@ let intersect_leading_branches =
    traces from each part have in common
 *)
 let compute_splitting_branch (partition: subtrace_set OptLabelMap.t) : branch =
-  Format.fprintf (debug_formatter ()) "\n<call: %a>\n" format_partition partition;
+  Format.fprintf (debug_formatter ())
+    "\n<compute_split: %a>\n" format_partition partition;
   let max_branch_map =
     OptLabelMap.map_reduce_nonempty
       (fun _ st -> compute_branches (SubtraceSet.choose st))
@@ -165,7 +166,7 @@ let compute_splitting_branch (partition: subtrace_set OptLabelMap.t) : branch =
       (fun (k1, v1) (k2, v2) ->
          if v1 > v2 then (k1, v1) else (k2, v2))
       max_branch_map in
-  Format.fprintf (debug_formatter ()) "<result: %d>\n"
+  Format.fprintf (debug_formatter ()) "<compute_split result: %d>\n"
     (match max_branch with Branch i -> i);
   max_branch
 
@@ -244,26 +245,24 @@ let filter_explicit_traces (st_set : subtrace_set) : trace_set =
    precondition: no function calls in e
    postcondition: all returned traces begin with the same entry (up to branch dir)
 *)
-let rec compute_trace_set (e : expr) : trace_set =
-  let traces = match e with
-    | Skip | Assert _ | AExp _ | FAssign (_, _) -> TraceSet.singleton [Skip]
-    | Cond (c, et, ef, b) ->
-      let branch_entry dir =
-        BranchEntry(c, aexp_locals c, b, dir) in
-      let ts_t = compute_trace_set et in
-      let ts_f = compute_trace_set ef in
-      TraceSet.union
-        (TraceSet.map (List.cons (branch_entry true)) ts_t)
-        (TraceSet.map (List.cons (branch_entry false)) ts_f)
-    | Seq(e1, e2) ->
-      let ts1 = compute_trace_set e1 in
-      let ts2 = compute_trace_set e2 in
-      TraceSet.prod List.append ts1 ts2
-    | Assign (l, a) ->
-      TraceSet.singleton ([AssignEntry(l, a, aexp_locals a)]) in
-    Format.fprintf (debug_formatter ()) "\n<traces: %a>\n"
-      format_trace_set traces;
-    traces
+let rec compute_trace_set : expr -> trace_set =
+  function
+  | Skip | Assert _ | AExp _ | FAssign (_, _) -> TraceSet.singleton [Skip]
+  | Cond (c, et, ef, b) ->
+    let branch_entry dir =
+      BranchEntry(c, aexp_locals c, b, dir) in
+    let ts_t = compute_trace_set et in
+    let ts_f = compute_trace_set ef in
+    TraceSet.union
+      (TraceSet.map (List.cons (branch_entry true)) ts_t)
+      (TraceSet.map (List.cons (branch_entry false)) ts_f)
+  | Seq(e1, e2) ->
+    let ts1 = compute_trace_set e1 in
+    let ts2 = compute_trace_set e2 in
+    TraceSet.prod List.append ts1 ts2
+  | Assign (l, a) ->
+    TraceSet.singleton ([AssignEntry(l, a, aexp_locals a)])
+
 (**
    compute_subtrace_set maps each trace in t_set to a subtrace
    containing exactly the assignments that explicitly flow to one
@@ -278,6 +277,8 @@ let rec compute_trace_set (e : expr) : trace_set =
 *)
 let compute_subtrace_set (src : local) (tgts: local_set)
     (ts : trace_set) : subtrace_set =
+  Format.fprintf (debug_formatter ()) "\n<call compute_subtrace_set of: %a>\n"
+      format_trace_set ts;
   let rec compute_subtrace_rec pos tr = (
     match tr with
     | [] -> [], tgts
@@ -311,7 +312,7 @@ let compute_subtrace_set (src : local) (tgts: local_set)
       compute_subtrace
       SubtraceSet.union
       SubtraceSet.empty ts in
-  Format.fprintf (debug_formatter ()) "\n<subtraces: %a>\n"
+  Format.fprintf (debug_formatter ()) "\n<result subtraces: %a>\n"
     format_subtrace_set subtraces;
   subtraces
 
