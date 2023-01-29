@@ -31,26 +31,25 @@ let list_to_string to_str =
   | [] -> ""
   | x :: l ->
     List.fold_left (fun s y -> s ^ ", " ^ to_str y) (to_str x) l
-
-
+      
+let rec aexp_repr aexp =
+  match aexp with
+  | Var (v, l) ->
+    (Printf.sprintf "%s%s" (local_to_string v) (label_to_string l))
+  | Const l ->
+    (Printf.sprintf "0%s" (label_to_string l))
+  | Binop (a1, a2, l) ->
+    (Printf.sprintf "(%s ⊕%s %s)"
+       (aexp_repr a1) (label_to_string l) (aexp_repr a2))
+  | Unop (a, l) ->
+    (Printf.sprintf "(⊖%s%s)"
+       (label_to_string l) (aexp_repr a))
+  | FApp (f, a_list, l, c) ->
+    (Printf.sprintf "%s%s%s(%s)"
+       (func_to_string f) (call_to_string c) (label_to_string l)
+       (list_to_string aexp_repr a_list))
+    
 let program_string (p : program) =
-  let rec aexp_repr aexp =
-    match aexp with
-    | Var (v, l) ->
-      (Printf.sprintf "%s%s" (local_to_string v) (label_to_string l))
-    | Const l ->
-      (Printf.sprintf "0%s" (label_to_string l))
-    | Binop (a1, a2, l) ->
-      (Printf.sprintf "(%s ⊕%s %s)"
-         (aexp_repr a1) (label_to_string l) (aexp_repr a2))
-    | Unop (a, l) ->
-      (Printf.sprintf "(⊖%s%s)"
-         (label_to_string l) (aexp_repr a))
-    | FApp (f, a_list, l, c) ->
-      (Printf.sprintf "%s%s%s(%s)"
-         (func_to_string f) (call_to_string c) (label_to_string l)
-         (list_to_string aexp_repr a_list))
-  in
   let rec ntabs tabs =
     if tabs = 0 then ""
     else Printf.sprintf "\t%s" (ntabs (tabs - 1))

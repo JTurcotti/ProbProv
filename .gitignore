@@ -3,7 +3,10 @@ _build
 *#
 *.cmo
 *.cmi
+*.cmt
 main
+flow_main
+scratch
 a.out
 lexer.ml
 parser.ml
