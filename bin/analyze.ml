@@ -674,6 +674,9 @@ struct
     let format_rgb_char ff (r, g, b) c =
       Format.fprintf ff "\027[1m\027[38;2;%d;%d;%dm%c\027[0m" r g b c
 
+    let format_color_char ff {Colors.r=r; Colors.g=g; Colors.b=b} c =
+      Format.fprintf ff "\027[1m\027[38;2;%d;%d;%dm%c\027[0m" r g b c
+
     let format_rgb_float ff (r, g, b) f =
       (* this looks silly but prevents negative zero from being displayed *)
       let f = if f = 0.0 then 0.0 else f in
@@ -740,7 +743,7 @@ struct
 
     module SimplePrettyPrint =
     struct
-      let format_program ff input_file
+      let format_program ff input_file color
           (label_tbl : Expr.label Expr.IntMap.t)
           (label_set : Expr.LabelSet.t) =
 
@@ -748,7 +751,7 @@ struct
           match Expr.IntMap.find_opt i label_tbl with
           | None -> format_plain_char ff c
           | Some l -> if Expr.LabelSet.mem l label_set then
-              format_by_float ff 1.0 c else
+              format_color_char ff color c else
               format_plain_char ff c in
         
         let char_num = ref 0 in

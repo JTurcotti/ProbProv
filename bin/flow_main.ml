@@ -12,12 +12,31 @@ let _, (fdecl, _) = Expr.FuncMap.choose typechecked_prog.tfunc_tbl
 let src, tgt = match List.hd fdecl.params, List.hd fdecl.results with
   | Arg(_, arg_str), Ret(_, ret_str) -> Expr.(Local(arg_str), Local(ret_str))
 
-let interference_flows = Interference_paths.compute_interference_flows
+open Interference_paths
+
+let all_flows = compute_trace_set fdecl.body
+let num_flows = TraceSet.cardinal all_flows
+
+let interference_flows = compute_interference_flows
     fdecl.body src tgt
+let num_interference_flows = TraceSet.cardinal interference_flows
 
-let one_flow = Interference_paths.(match TraceSet.choose_opt interference_flows with
-    | None -> Expr.LabelSet.empty
-    | Some flow -> trace_labels flow)
+let () = Format.fprintf Format.std_formatter
+    "\n\nRESULT: %d total flows; %d interference flows\n\n"
+    num_flows num_interference_flows
 
-let () = Output.SimplePrettyPrint.format_program Format.std_formatter
-    !Io.IO.input_file typechecked_prog.label_tbl one_flow
+let noninterference_flows = TraceSet.diff all_flows interference_flows
+
+let print_flow flow color =
+  Output.SimplePrettyPrint.format_program
+    Format.std_formatter
+    !Io.IO.input_file
+    color
+    typechecked_prog.label_tbl
+    (trace_labels flow)
+
+let () =
+  Format.fprintf Format.std_formatter "Interference flows:\n";
+  TraceSet.iter (fun flow -> print_flow flow Colors.gold) interference_flows;
+  Format.fprintf Format.std_formatter "\nNoninterference flows:\n";
+  TraceSet.iter (fun flow -> print_flow flow Colors.cyan) noninterference_flows
