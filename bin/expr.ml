@@ -203,6 +203,14 @@ let rec aexpr_labels : aexp -> LabelSet.t =
     LabelSet.add l (List.fold_right (fun a ls ->
         LabelSet.union (aexpr_labels a) ls) a_list LabelSet.empty)
 
+let aexpr_label : aexp -> label =
+  function
+  | Var (_, l) -> l
+  | Const l -> l
+  | Binop (_, _, l) -> l
+  | Unop (_, l) -> l
+  | FApp (_, _, l, _) -> l
+
 let rec expr_labels : expr -> LabelSet.t =
   function
   | Skip -> LabelSet.empty

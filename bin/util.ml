@@ -30,11 +30,11 @@ let list_map_reduce map reduce unit l =
   | x :: l -> List.fold_right
                 (compose map reduce) l (map x)
 
-exception ListMapReduceExepectedNonempty
+exception MapReduceExepectedNonempty
 
 let list_map_reduce_nonempty map reduce l =
   match l with
-  | [] -> raise ListMapReduceExepectedNonempty
+  | [] -> raise MapReduceExepectedNonempty
   | x :: l -> List.fold_right
                 (compose map reduce) l (map x)
 
@@ -47,6 +47,12 @@ struct
     match choose_opt t with
     | None -> unit
     | Some el -> fold (compose map reduce) (remove el t) (map el)
+
+  let map_reduce_nonempty map reduce t =
+    match choose_opt t with
+    | None -> raise MapReduceExepectedNonempty
+    | Some el -> fold (compose map reduce) (remove el t) (map el)
+
                    
   let lift_format format_t infix unit: Format.formatter -> t -> unit =
     fun ff st ->
@@ -81,6 +87,12 @@ struct
     match choose_opt t with
     | None -> unit
     | Some (k, v) -> fold (fun k v -> reduce (map k v)) (remove k t) (map k v)
+
+  let map_reduce_nonempty map reduce t =
+    match choose_opt t with
+    | None -> raise MapReduceExepectedNonempty
+    | Some (k, v) -> fold (fun k v -> reduce (map k v)) (remove k t) (map k v)
+
 
 
   let lift_format format_k format_v infix unit :
