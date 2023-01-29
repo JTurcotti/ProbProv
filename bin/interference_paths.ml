@@ -174,15 +174,20 @@ exception ProgrammerLogicError of string
 
 (** looks up the passed branch in the passed trace, returning its position and
     direction *)
-let find_branch_in_trace b tr =
+let find_branch_in_trace_opt b tr =
   let rec acc n tr = 
     match tr with
     | AssignEntry(_, _, _) :: tr | Skip :: tr -> acc (n+1) tr
     | BranchEntry(_, deps, b', dir) :: tr ->
-      if b = b' then n, deps, dir else acc (n+1) tr
-    | [] -> raise (ProgrammerLogicError "the passed branch should be in the trace")
+      if b = b' then Some (n, deps, dir) else acc (n+1) tr
+    | [] -> None
   in
   acc 0 tr
+
+let find_branch_in_trace b tr =
+  match find_branch_in_trace_opt b tr with
+  | None ->  raise (ProgrammerLogicError "the passed branch should be in the trace")
+  | Some v -> v
     
 let check_pos_of_branch_in_st b st =
   let pos, _, _ = find_branch_in_trace b st.underlying in pos

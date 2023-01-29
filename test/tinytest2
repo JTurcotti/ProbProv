@@ -1,0 +1,6 @@
+def f(high) -> y {
+    y = 0;
+    if high {
+        y = 1
+    }
+}

@@ -675,7 +675,7 @@ struct
       Format.fprintf ff "\027[1m\027[38;2;%d;%d;%dm%c\027[0m" r g b c
 
     let format_color_char ff {Colors.r=r; Colors.g=g; Colors.b=b} c =
-      Format.fprintf ff "\027[1m\027[38;2;%d;%d;%dm%c\027[0m" r g b c
+      format_rgb_char ff (r, g, b) c
 
     let format_rgb_float ff (r, g, b) f =
       (* this looks silly but prevents negative zero from being displayed *)
@@ -684,6 +684,16 @@ struct
 
     let format_rgb_str ff (r, g, b) s =
       Format.fprintf ff "\027[38;2;%d;%d;%dm%s\027[0m" r g b s
+        
+    let format_color_str {Colors.r=r; Colors.g=g; Colors.b=b} ff c =
+      format_rgb_str ff (r, g, b) c
+
+    let format_rgb_int ff (r, g, b) d =
+      Format.fprintf ff "\027[38;2;%d;%d;%dm%d\027[0m" r g b d
+        
+    let format_color_int {Colors.r=r; Colors.g=g; Colors.b=b} ff c =
+      format_rgb_int ff (r, g, b) c
+
 
     let format_plain_char ff c =
       Format.fprintf ff "%c" c

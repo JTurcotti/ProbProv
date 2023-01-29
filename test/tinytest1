@@ -1,0 +1,12 @@
+def f(high, low) -> y {
+    y = 0;
+    if high {
+       if low < 10 {
+            y = 1
+       }
+    } else {
+        if low > 50 {
+            y = 2
+        }
+    }
+}

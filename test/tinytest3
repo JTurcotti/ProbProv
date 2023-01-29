@@ -1,0 +1,14 @@
+def f(a, b, c, d, e, f, g) -> y {
+    t = a;
+    if b {
+        if c {
+            t = d
+        };
+        y = e;
+        if t {
+            y = f
+        }
+    } else {
+        y = g
+    }
+}
