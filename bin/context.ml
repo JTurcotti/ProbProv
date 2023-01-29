@@ -337,6 +337,8 @@ let context_merge_across_branches br : context -> context -> context =
 *)
 type touch_set = event LocalMap.t
 
+let touch_set_merge = LocalMap.merge merge_event_ops
+
 (* computes the touch set for an expression *)
 let rec compute_touch_set (e : expr) =
   match e with
@@ -348,7 +350,7 @@ let rec compute_touch_set (e : expr) =
                          (fun x -> LocalMap.add x event_one)
                          xl LocalMap.empty
   | Seq (e1, e2) ->
-    LocalMap.merge merge_event_ops
+    touch_set_merge
       (compute_touch_set e1) (compute_touch_set e2)
   | _ -> LocalMap.empty                       
 
@@ -371,13 +373,11 @@ let assoc_touch_set_with_blame ts b : context =
    then the two results are merge across the branch `br`
 *) 
 let context_merge_cond br b_br e_t e_f c_t c_f : context =
-  context_merge_across_branches br
-    (Refactor.context_reduce
-       (context_merge c_t
-          (assoc_touch_set_with_blame (compute_touch_set e_t) b_br)))
-    (Refactor.context_reduce
-       (context_merge c_f
-          (assoc_touch_set_with_blame (compute_touch_set e_f) b_br)))
-
+  (Refactor.context_reduce
+     (context_merge
+        (assoc_touch_set_with_blame (touch_set_merge
+                                       (compute_touch_set e_t)
+                                       (compute_touch_set e_f)) b_br)
+        (context_merge_across_branches br c_t c_f)))
 
 (* end context utilities *)
