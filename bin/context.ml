@@ -136,13 +136,26 @@ let event_conj e1 e2 : event =
 (* performs a merge of event options, doing either the trivial thing
    or applying event_disj if two non-empties are passed
    meant to be used in Map.Make().Merge *)
-let merge_event_ops _ =
+let merge_event_opts _ =
   double_option_map event_disj
+
+let merge_events_across_branch br _ e1 e2 =
+  if e1 = e2 then
+    (* if we didn't handle this case separately,
+         we'd still have a correct result, but a
+         needlessly large and expanded one. This is why we don't
+         use double_option_map*)
+    e1
+  else
+    (event_disj
+       (event_internal_conj (AIE(br, true)) e1)
+       (event_internal_conj (AIE(br, false)) e2))
 
 (* performs a merge of event options, first applying
    internal event conjunctions in accordance with the passed branch
-   meant to be used in Map.Make().Merge *)
-let merge_event_ops_across_branch br _ op_e1 op_e2 =
+   meant to be used in Map.Make().Merge (hence the ignored arg for
+   the key being merged at) *)
+let merge_event_opts_across_branch br _ op_e1 op_e2 =
   match (op_e1, op_e2) with
   | None, None -> None
   | Some e, None ->
@@ -150,16 +163,34 @@ let merge_event_ops_across_branch br _ op_e1 op_e2 =
   | None, Some e ->
     Some (event_internal_conj (AIE(br, false)) e)
   | Some e1, Some e2 ->
-    if e1 = e2 then
-      (* if we didn't handle this case separately,
-         we'd still have a correct result, but a
-         needlessly large and expanded one. This is why we don't
-         use double_option_map*)
-      Some e1
-    else
-      Some (event_disj
-              (event_internal_conj (AIE(br, true)) e1)
-              (event_internal_conj (AIE(br, false)) e2))
+    Some (merge_events_across_branch br () e1 e2)
+
+(**
+   a touch_set computed for the positive (resp. negative)
+   direction of a branch π (arg `br`) should have each of its blame
+   events e expanded to πe ∨ π̅ (resp. π ∨ π̅e) to include the fact
+   that if the branch is taken in the other direction, we have to
+   pessimistically assume the touch occurred.
+   This function applies that transformation in parallel to the
+   passed events for true branch touch and false branch touch.
+   It collapses the case of touch in both branches to `event_one`
+*)
+let merge_touch_event_opts_across_branch br _ opt_e1 opt_e2 =
+  match (opt_e1, opt_e2) with
+  | None, None ->
+    (* var not touched in either branch *)
+    None
+  | Some e, None ->
+    (* var touched only in true branch.
+       if true branch taken, use the touch event,
+       if false branch taken, pessismistically assume always touched *)
+    Some (merge_events_across_branch br () e event_one)
+  | None, Some e ->
+    (* symmetric to true branch case *)
+    Some (merge_events_across_branch br () event_one e)
+  | Some _, Some _ ->
+    (* most pessimistic case: always have to assume touched *)
+    Some event_one
 
 (* end event utilities *)
 
@@ -201,14 +232,14 @@ let blame_one a : blame = SiteMap.singleton a event_one
 (* combine the blame from two sources -
    out blames a site iff either of the sources do *)
 let blame_merge : blame -> blame -> blame =
-  SiteMap.merge merge_event_ops
+  SiteMap.merge merge_event_opts
 
 (* combines the blame from two sources, associating
    the first with the branch `br` being taken true,
    and the second with the branch `br` being taken false,
    prevents needlessly expanding terms *)
 let blame_merge_across_branch br : blame -> blame -> blame =
-  SiteMap.merge (merge_event_ops_across_branch br)
+  SiteMap.merge (merge_event_opts_across_branch br)
 
 (* checks whether this blame object contains any phantom return
    - these should never be read or returned *)
@@ -337,13 +368,15 @@ let context_merge_across_branches br : context -> context -> context =
 *)
 type touch_set = event LocalMap.t
 
-let touch_set_merge = LocalMap.merge merge_event_ops
+let touch_set_merge = LocalMap.merge merge_event_opts
+let touch_set_merge_across_branch br =
+  LocalMap.merge (merge_touch_event_opts_across_branch br)
 
 (* computes the touch set for an expression *)
 let rec compute_touch_set (e : expr) =
   match e with
   | Cond (_, e_t, e_f, b) -> 
-    LocalMap.merge (merge_event_ops_across_branch b)
+    LocalMap.merge (merge_event_opts_across_branch b)
       (compute_touch_set e_t) (compute_touch_set e_f)
   | Assign (x, _) -> LocalMap.singleton x event_one
   | FAssign (xl, _) -> List.fold_right
@@ -352,8 +385,7 @@ let rec compute_touch_set (e : expr) =
   | Seq (e1, e2) ->
     touch_set_merge
       (compute_touch_set e1) (compute_touch_set e2)
-  | _ -> LocalMap.empty                       
-
+  | _ -> LocalMap.empty
 
 (* returns a new context in which every variable from a passed
    touch set `ts` is associated with a certain blame, conjuncted
@@ -375,9 +407,11 @@ let assoc_touch_set_with_blame ts b : context =
 let context_merge_cond br b_br e_t e_f c_t c_f : context =
   (Refactor.context_reduce
      (context_merge
-        (assoc_touch_set_with_blame (touch_set_merge
-                                       (compute_touch_set e_t)
-                                       (compute_touch_set e_f)) b_br)
+        (assoc_touch_set_with_blame
+           (touch_set_merge_across_branch br
+              (compute_touch_set e_t)
+              (compute_touch_set e_f))
+           b_br)
         (context_merge_across_branches br c_t c_f)))
 
 (* end context utilities *)
