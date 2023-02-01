@@ -6,6 +6,7 @@ _build
 *.cmt
 main
 flow_main
+flow_check
 scratch
 a.out
 lexer.ml

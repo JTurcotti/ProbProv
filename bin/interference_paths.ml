@@ -89,6 +89,13 @@ type branch_tree =
       * branch_tree (* right subtree (branch not taken) *)
   | Leaf of
       subtrace_set (* the subtraces that lead to this leaf *)
+(**
+   a suff_impl represents a sufficient condition for an implicit
+   flow to occur: a list of branches that, if all are influenced
+   by HIGH, the flow will reveal HIGH. Each branch is paired with
+   the list of traces that reach it for ease of computation later.
+*)
+type suff_impl = (branch * (trace_pos list)) list
 
 (** trace_labels takes a trace and returns the labels of all
     aexprs contained in the trace (useful for displaying trace)
@@ -132,24 +139,14 @@ let partition_by_head (st_set : subtrace_set) : subtrace_set OptLabelMap.t =
 
 (** given a subtrace, compute_leading_branches returns the set of branches
     that occur in the trace, mapped to their position in the trace
-    and to a flag indicated whether they occur before the first assignment
-    in the subtrace.
-
-    This later flag is necessary because even though a splitting branch
-    might occur after the first assignment of _some_ of the subtraces
-    being split, it must occur before at least _one_ of them *)
-let compute_branches (st : subtrace) : (int * bool) BranchMap.t =
-  let occurs_before_fst n =
-    if List.length st.filter = 0 then false else
-      n < List.nth st.filter 0 in
+*)
+let compute_branches (t : trace) : int BranchMap.t =
   let rec acc n =
-    if n = List.length st.underlying then BranchMap.empty else
-      match List.nth st.underlying n with
+    if n = List.length t then BranchMap.empty else
+      match List.nth t n with
       | AssignEntry(_, _, _) | Skip -> (acc (n + 1))
       | BranchEntry(_, _, b, _) ->
-        BranchMap.add
-          b (n, occurs_before_fst n)
-          (acc (n + 1))
+        BranchMap.add b n (acc (n + 1))
   in
   acc 0
     
@@ -158,35 +155,19 @@ let compute_branches (st : subtrace) : (int * bool) BranchMap.t =
     they occur in, and their values `occ` are disjuncted together
     to aid reasoning in `compute_splitting_branch`
 *)
-let intersect_leading_branches =
+let intersect_branch_maps = 
   BranchMap.merge (fun _ opt_fst opt_snd -> match opt_fst, opt_snd with
-      | Some (n1, occ1), Some (n2, occ2) -> Some (max n1 n2, occ1 || occ2)
+      | Some n1, Some n2 -> Some (max n1 n2)
       | _ -> None)
-
-(**
-   Given a partition of a subtrace_set, computing the last branch that
-   1) all subtraces have in common 
-   2) occurs before the first assignment in at least subtrace
-*)
-let compute_splitting_branch (partition: subtrace_set OptLabelMap.t) : branch =
-  Format.fprintf (debug_formatter ())
-    "\n<compute_split: %a>\n" format_partition partition;
-  let max_branch_map =
-    OptLabelMap.map_reduce_nonempty
-      (fun _ st -> compute_branches (SubtraceSet.choose st))
-      intersect_leading_branches
-      partition
-  in
-  let max_branch, _ =
-    BranchMap.map_reduce_nonempty
-      (fun k v -> (k, v))
-      (fun (br1, (n1, occ1)) (br2, (n2, occ2)) ->
-         (if occ1 && (n1 > n2 || (not occ2)) then
-            (br1, (n1, occ1)) else (br2, (n2, occ2))))
-      max_branch_map in
-  Format.fprintf (debug_formatter ()) "<compute_split result: %d>\n"
-    (match max_branch with Branch i -> i);
-  max_branch
+    
+let last_common_branch trace1 trace2 : branch =
+  let intersected = intersect_branch_maps
+      (compute_branches trace1)
+      (compute_branches trace2) in
+  let (b, _) = BranchMap.fold (fun b n (b_prev, n_prev) ->
+      if n > n_prev then (b, n) else (b_prev, n_prev))
+      intersected (BranchMap.choose intersected) in
+  b
 
 exception ProgrammerLogicError of string
 
@@ -206,32 +187,21 @@ let find_branch_in_trace b tr =
   match find_branch_in_trace_opt b tr with
   | None ->  raise (ProgrammerLogicError "the passed branch should be in the trace")
   | Some v -> v
-    
-let check_pos_of_branch_in_st b st =
-  let pos, _, _ = find_branch_in_trace b st.underlying in pos
 
-let check_deps_of_branch_in_st b st =
-  let _, deps, _ = find_branch_in_trace b st.underlying in deps
+let check_pos_of_branch_in_trace b t =
+  let pos, _, _ = find_branch_in_trace b t in pos
 
-let check_dir_of_branch_in_st b st =
-  let _, _, dir = find_branch_in_trace b st.underlying in dir
-
-(**
-   Given a subtrace_set, verify that all traces in it contain this branch
-   and take it the same way, then return that way
-*)
-let check_dir_of_branch (b : branch) (st_set: subtrace_set) : bool =
-  SubtraceSet.map_reduce_nonempty
-    (fun st -> check_dir_of_branch_in_st b st)
-    (fun b1 b2 -> if b1 = b2 then b1 else
-        raise (ProgrammerLogicError "the passed branch should not split this class"))
-    st_set
+let check_deps_of_branch_in_trace b t =
+  let _, deps, _ = find_branch_in_trace b t in deps
 
 (** find the passed branch in each trace in subtrace, and return as a trace_pos *)
 let extract_trace_pos_list (b : branch) (st_set : subtrace_set) : trace_pos list =
   SubtraceSet.fold (fun st ->
-      List.cons {t = st.underlying;
-                 pos = check_pos_of_branch_in_st b st})
+      match find_branch_in_trace_opt b st.underlying with
+      | None -> id
+      | Some (pos, _, _) ->
+        List.cons {t = st.underlying;
+                   pos = pos})
     st_set
     []
 
@@ -254,12 +224,11 @@ let split_trace_pos_list (trace_pos_list : trace_pos list) :
     trace_pos_list
     (TraceSet.empty, TraceSet.empty)
 
+(* unused *)
 let filter_explicit_traces (st_set : subtrace_set) : trace_set =
   SubtraceSet.fold
     (fun st ts -> if st.is_explicit then TraceSet.add st.underlying ts else ts)
     st_set TraceSet.empty
-    
-      
     
 (**
    compute_trace_set computes the set of all program traces
@@ -339,17 +308,32 @@ let compute_subtrace_set (src : local) (tgts: local_set)
     format_subtrace_set subtraces;
   subtraces
 
-
-
 (**
-   compute_branch_tree computes a prefix tree of the passed Sub.trace_set,
-   annotating each node with the last branch point the two children traces
-   have in common. That branch point is represented by pointers to its position
-   in each underlying trace.
-
-   Step 2/3 in refine_trace_set
+   Filter subtraces back down to only those containing explicit flows
 *)
-let rec compute_branch_tree (st_set: subtrace_set) : branch_tree =
+let compute_explicit_flows (st_set : subtrace_set) : trace_set =
+  SubtraceSet.fold (fun st ->
+      if st.is_explicit then TraceSet.add st.underlying else id)
+    st_set TraceSet.empty
+
+(* module QA(Arg: sig type q type a val ans: q -> a end) =
+struct
+  include Arg
+  module QMap = Map(struct type t = q end)
+  type state = a QMap.t
+
+  let ask (s : state) (q : q) : state * a =
+    match QMap.find_opt q s with
+    | Some a -> (s, a)
+    | None ->
+      let a = (ans q) in
+      (QMap.add q a s, a)
+   end *)
+  
+(**
+   Given a set of subtraces, determine the implicit flows
+*)
+let rec compute_implicit_flows src (st_set: subtrace_set) : trace_set = 
   let partition = partition_by_head st_set in
   match OptLabelMap.cardinal partition with
   | 0 -> raise (ProgrammerLogicError "empty set of subtraces not expected")
@@ -357,71 +341,82 @@ let rec compute_branch_tree (st_set: subtrace_set) : branch_tree =
     (* all subtraces begin the same way *)
     (match OptLabelMap.choose partition with
      | None, _ ->
-       (* there are no remaining flowing assignments *)
-       Leaf st_set
+       (* there are no remaining flowing assignments so no implicit flows *)
+       TraceSet.empty 
      | Some _, st_set ->
-       (* all subtraces begin with the same assignment, so remove it and continue *)
+       (* all subtraces begin with the same assignment, so
+          it's irrelevant to implicit flows: remove it and continue *)
        let st_tail_set = SubtraceSet.map (
            fun st -> {st with filter = List.tl st.filter}
          ) st_set in
-       compute_branch_tree st_tail_set
+       compute_implicit_flows src st_tail_set
     )
-  | _ -> ( (* subtraces begin in different ways - create a branch node! *)
-      let splitting_branch = compute_splitting_branch partition in
-      let trace_pos_list = extract_trace_pos_list splitting_branch st_set in
-      let pos_st_set, neg_st_set = SubtraceSet.partition
-          (check_dir_of_branch_in_st splitting_branch)
-          st_set in
-      let () = if (
-        SubtraceSet.cardinal st_set > SubtraceSet.cardinal pos_st_set
-        &&
-        SubtraceSet.cardinal st_set > SubtraceSet.cardinal neg_st_set)
-        then () else (
-          raise
-            (ProgrammerLogicError
-               "compute_branch_tree failed to find nontrivial split of subtraces")
-        ) in
-      Branch(check_deps_of_branch_in_st
-               splitting_branch (SubtraceSet.choose st_set),
-             trace_pos_list,
-             compute_branch_tree pos_st_set,
-             compute_branch_tree neg_st_set)
-    )
+  | _ -> ( (* subtraces begin in different ways - there are implicit flows ! *)
+      let implicit_flows_here =
+        OptLabelMap.fold (fun k st_set1 ->
+            OptLabelMap.fold (fun _ st_set2 ->
+                (* st_set1 and st_set2 are sets of subtraces that yield
+                   different explicit values, so figure out if this
+                   yields any implicit flows *)
+                SubtraceSet.fold (fun st1 ->
+                    SubtraceSet.fold (fun st2 ->
+                        TraceSet.union
+                          (compute_trace_v_trace_implicit_flows
+                             src st_set
+                             st1.underlying
+                             st2.underlying
+                          )
+                      ) st_set2
+                  ) st_set1
+              ) (OptLabelMap.remove k partition)
+          ) partition TraceSet.empty in
 
+      (* we now recursively join all explicit flows in subtrees of the
+         prefix tree of explicitly flowing assignments to the implicit
+         flows computed here *)
+      OptLabelMap.fold (fun _ st_set ->
+          TraceSet.union (compute_implicit_flows src st_set)
+        ) partition
+        implicit_flows_here
+    )
+    
 (**
-   compute_interference_paths takes a branch tree and returns
-   all underlying traces that correspond to interference paths.
-   These can be either fully explicit, or implicit up to a point and then explicit.
-
-   Step 3/3 in refine_trace_set   
+   Given that st1 and st2 yield different explicit values, compute
+   all the resulting implicit flows. In particular, find the last branch
+   at which they agree, and compute the explicit flows to the value
+   that branch depends on (out of the set of all subtraces under consideration)
 *)
-let rec compute_interference_paths (src: local) (bt : branch_tree) : trace_set =
-  match bt with
-  | Leaf st_set ->
-    (* at leaves, we retain all explicit flows and discard all others *)
-    filter_explicit_traces st_set
-  | Branch(deps, trace_pos_list, l_branch_tree, r_branch_tree) ->
-    (* at branches, we evaluate implicit flows by considering all
-       flows to the deps of this branch (recursively obtained) adjoined
-       to all explicit flows from the branch onwards
-    *)
-    let pre_flows, post_flows = split_trace_pos_list trace_pos_list in
-    let pre_flows_refined = refine_trace_set src deps pre_flows in
-    let implicit_flows = TraceSet.prod List.append pre_flows_refined post_flows in
-    TraceSet.union implicit_flows
-      (TraceSet.union
-         (compute_interference_paths src l_branch_tree)
-         (compute_interference_paths src r_branch_tree))
+and compute_trace_v_trace_implicit_flows src st_set trace1 trace2 : trace_set =
+  (* find the last branch both traces took *)
+  let lcb = last_common_branch trace1 trace2 in
+  let (pos1, deps, _), (pos2, _, _) =
+    find_branch_in_trace lcb trace1,
+    find_branch_in_trace lcb trace2 in
+  (* extract the portion of trace that occurred after that branch *)
+  let (_, trace1_tail), (_, trace2_tail) =
+    split_trace_pos {t=trace1; pos = pos1},
+    split_trace_pos {t=trace2; pos = pos2} in
+
+  (* extract the portion of all subtraces under consideration that leads
+     up to this branch *)
+  let prefix, _ = split_trace_pos_list (extract_trace_pos_list lcb st_set) in
+  (* refine that set to just those that flow to the dependencies of the branch *)
+  let refined_prefix = refine_trace_set src deps prefix in
+  (* return all traces that lead up to the lcb, flow to the value it branches on,
+     and then proceed as trace1 or trace2 do *)
+  TraceSet.union
+    (TraceSet.map (fun tr -> List.append tr trace1_tail) refined_prefix)
+    (TraceSet.map (fun tr -> List.append tr trace2_tail) refined_prefix)
 
 (**
    refine_trace_set takes a set of traces and returns only those corresponding
    to interference paths
 *)
 and refine_trace_set (src : local) (tgts : local_set) (ts : trace_set) : trace_set =
-  ts
-  |> compute_subtrace_set src tgts
-  |> compute_branch_tree
-  |> compute_interference_paths src
+  let subtraces = compute_subtrace_set src tgts ts in
+  let implicit_flows = compute_implicit_flows src subtraces in
+  let explicit_flows = compute_explicit_flows subtraces in
+  TraceSet.union implicit_flows explicit_flows
 
 let compute_interference_flows (e : expr) (src: local) (tgt: local) : trace_set =
   refine_trace_set src (LocalSet.singleton tgt) (compute_trace_set e)

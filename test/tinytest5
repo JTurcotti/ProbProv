@@ -1,10 +1,16 @@
-def f(high) -> t {
+def f(a, x, y) -> t {
     t = 0;
-    x = high;
-    y = high;
-    if x {
-        if y {
-            t = 1
+    if a {
+        if x {
+            if y {
+                t = 1
+            }
+        }
+    } else {
+        if x {
+            if y {
+                t = 2
+            }
         }
     }
 }

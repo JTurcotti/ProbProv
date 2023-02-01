@@ -87,7 +87,7 @@ let () = Expr.FuncMap.iter check_func typechecked_prog.tfunc_tbl
 
 let () = Output.(
     Format.fprintf Format.std_formatter
-      "Out of %d (= %a + %a) total flows (broken down into %a and %a flows),\n the type system mischaracterized %d (= %a + %a)\n"
+      "Out of %d (= %a + %a) total flows examined (broken down into %a and %a flows),\n the type system mischaracterized %d (= %a + %a)\n"
       (!true_pos + !true_neg + !false_pos + !false_neg)
       (format_color_int int_color) (!true_pos + !false_neg)
       (format_color_int nonint_color) (!false_pos + !true_neg)

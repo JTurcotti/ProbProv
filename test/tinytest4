@@ -1,7 +1,7 @@
-def f(high) -> t {
+def f(x, y) -> t {
     t = 0;
-    if high {
-        if 0 {
+    if x {
+        if y {
             t = 1
         }
     }
