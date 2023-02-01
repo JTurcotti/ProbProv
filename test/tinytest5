@@ -1,0 +1,10 @@
+def f(high) -> t {
+    t = 0;
+    x = high;
+    y = high;
+    if x {
+        if y {
+            t = 1
+        }
+    }
+}

@@ -92,7 +92,7 @@ let () = Output.(
       (format_color_int int_color) (!true_pos + !false_neg)
       (format_color_int nonint_color) (!false_pos + !true_neg)
       (format_color_str int_color) "interference"
-      (format_color_str nonint_color) "nonintereference"
+      (format_color_str nonint_color) "noninterference"
       (!false_pos + !false_neg)
       (format_color_int int_color) (!false_neg)
       (format_color_int nonint_color) (!false_pos)

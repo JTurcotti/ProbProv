@@ -1,0 +1,8 @@
+def f(high) -> t {
+    t = 0;
+    if high {
+        if 0 {
+            t = 1
+        }
+    }
+}

@@ -1,4 +1,4 @@
-def f(a, b, c, d, e, f, g) -> y {
+def f(a, b, c, d, e, f, g) -> (y, t) {
     t = a;
     if b {
         if c {
