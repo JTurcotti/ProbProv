@@ -131,25 +131,42 @@ let partition_by_head (st_set : subtrace_set) : subtrace_set OptLabelMap.t =
     ) st_set OptLabelMap.empty
 
 (** given a subtrace, compute_leading_branches returns the set of branches
-    that occur in the trace, mapped to their position in the trace *)
-let compute_branches (st : subtrace) : int BranchMap.t =
+    that occur in the trace, mapped to their position in the trace
+    and to a flag indicated whether they occur before the first assignment
+    in the subtrace.
+
+    This later flag is necessary because even though a splitting branch
+    might occur after the first assignment of _some_ of the subtraces
+    being split, it must occur before at least _one_ of them *)
+let compute_branches (st : subtrace) : (int * bool) BranchMap.t =
+  let occurs_before_fst n =
+    if List.length st.filter = 0 then false else
+      n < List.nth st.filter 0 in
   let rec acc n =
     if n = List.length st.underlying then BranchMap.empty else
       match List.nth st.underlying n with
       | AssignEntry(_, _, _) | Skip -> (acc (n + 1))
-      | BranchEntry(_, _, b, _) -> BranchMap.add b n (acc (n + 1))
+      | BranchEntry(_, _, b, _) ->
+        BranchMap.add
+          b (n, occurs_before_fst n)
+          (acc (n + 1))
   in
   acc 0
     
-(** intersects two branch->int maps, taking max values for vals *)
+(** intersects two of the maps used to compute splitting branches
+    branches get given the largest position `n` of any subtrace
+    they occur in, and their values `occ` are disjuncted together
+    to aid reasoning in `compute_splitting_branch`
+*)
 let intersect_leading_branches =
   BranchMap.merge (fun _ opt_fst opt_snd -> match opt_fst, opt_snd with
-      | Some fst, Some snd -> Some (max fst snd)
+      | Some (n1, occ1), Some (n2, occ2) -> Some (max n1 n2, occ1 || occ2)
       | _ -> None)
 
 (**
-   Given a partition of a subtrace_set, compute the last branch that
-   traces from each part have in common
+   Given a partition of a subtrace_set, computing the last branch that
+   1) all subtraces have in common 
+   2) occurs before the first assignment in at least subtrace
 *)
 let compute_splitting_branch (partition: subtrace_set OptLabelMap.t) : branch =
   Format.fprintf (debug_formatter ())
@@ -163,8 +180,9 @@ let compute_splitting_branch (partition: subtrace_set OptLabelMap.t) : branch =
   let max_branch, _ =
     BranchMap.map_reduce_nonempty
       (fun k v -> (k, v))
-      (fun (k1, v1) (k2, v2) ->
-         if v1 > v2 then (k1, v1) else (k2, v2))
+      (fun (br1, (n1, occ1)) (br2, (n2, occ2)) ->
+         (if occ1 && (n1 > n2 || (not occ2)) then
+            (br1, (n1, occ1)) else (br2, (n2, occ2))))
       max_branch_map in
   Format.fprintf (debug_formatter ()) "<compute_split result: %d>\n"
     (match max_branch with Branch i -> i);
@@ -354,6 +372,15 @@ let rec compute_branch_tree (st_set: subtrace_set) : branch_tree =
       let pos_st_set, neg_st_set = SubtraceSet.partition
           (check_dir_of_branch_in_st splitting_branch)
           st_set in
+      let () = if (
+        SubtraceSet.cardinal st_set > SubtraceSet.cardinal pos_st_set
+        &&
+        SubtraceSet.cardinal st_set > SubtraceSet.cardinal neg_st_set)
+        then () else (
+          raise
+            (ProgrammerLogicError
+               "compute_branch_tree failed to find nontrivial split of subtraces")
+        ) in
       Branch(check_deps_of_branch_in_st
                splitting_branch (SubtraceSet.choose st_set),
              trace_pos_list,
