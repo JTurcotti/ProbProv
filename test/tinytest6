@@ -1,20 +1,35 @@
-def f(a, b, x, y) -> t {
+def f(a, x, y) -> t {
+    if a {
+        if x {
+            if y {
+                return 1
+            }
+        }
+    } else {
+        if y {
+            if x {
+                return 2
+            }
+        }
+    };
+    return 0
+}
+
+def f_classic(a, x, y) -> t {
     t = 0;
     if a {
-        if b {
-            if x {
-                if y {
-                    t = 1
-                }
+        if x {
+            if y {
+                t = 1
             }
-        } else {
+        }
+    } else {
+        if y {
             if x {
                 t = 2
             }
         }
-    } else {
-        if x {
-            t = 3
-        }
-    }
+    };
+    return t
 }
+
