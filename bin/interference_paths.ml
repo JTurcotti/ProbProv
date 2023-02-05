@@ -243,7 +243,13 @@ let filter_explicit_traces (st_set : subtrace_set) : trace_set =
   SubtraceSet.fold
     (fun st ts -> if st.is_explicit then TraceSet.add st.underlying ts else ts)
     st_set TraceSet.empty
-    
+
+(** this appends two traces, ensuring nothing is added after a return *)
+let trace_append trace1 trace2 =
+  match list_last trace1 with
+  | ReturnEntry _ -> trace1
+  | _ -> List.append trace1 trace2
+
 (**
    compute_trace_set computes the set of all program traces
    corresponding to the passed expression
@@ -265,7 +271,7 @@ let rec compute_trace_set : expr -> trace_set =
   | Seq(e1, e2) ->
     let ts1 = compute_trace_set e1 in
     let ts2 = compute_trace_set e2 in
-    TraceSet.prod List.append ts1 ts2
+    TraceSet.prod trace_append ts1 ts2
   | Assign (l, a) ->
     TraceSet.singleton ([AssignEntry(l, a, aexp_locals a)])
   | Return alist ->

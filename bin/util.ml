@@ -199,3 +199,6 @@ end
 
 let rec pow f i =
   if i = 0 then 1. else f *. (pow f (i - 1))
+
+let list_last l =
+  List.nth l (List.length l - 1) 
