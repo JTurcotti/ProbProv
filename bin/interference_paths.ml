@@ -254,7 +254,7 @@ let filter_explicit_traces (st_set : subtrace_set) : trace_set =
 let rec compute_trace_set : expr -> trace_set =
   function
   | Skip | Assert _ | AExp _ | FAssign (_, _) -> TraceSet.singleton [Skip]
-  | Cond (c, et, ef, b, _, _) ->
+  | Cond (c, et, ef, b) ->
     let branch_entry dir =
       BranchEntry(c, aexp_locals c, b, dir) in
     let ts_t = compute_trace_set et in

@@ -142,6 +142,9 @@ let event_conj e1 e2 : event =
 let merge_event_opts _ =
   double_option_map event_disj
 
+let event_branch_conj br dir e =
+  event_internal_conj (AIE(br, dir)) e
+
 let merge_events_across_branch br _ e1 e2 =
   if e1 = e2 then
     (* if we didn't handle this case separately,
@@ -151,8 +154,8 @@ let merge_events_across_branch br _ e1 e2 =
     e1
   else
     (event_disj
-       (event_internal_conj (AIE(br, true)) e1)
-       (event_internal_conj (AIE(br, false)) e2))
+       (event_branch_conj br true e1)
+       (event_branch_conj br false e2))
 
 (** performs a merge of event options, first applying
    internal event conjunctions in accordance with the passed branch
@@ -354,6 +357,9 @@ let filter_to_ret_sites fdecl =
 let context_assign_zero x c =
   context_assign x blame_zero c
 
+let context_branch_conj branch dir : context -> context =
+  LocalMap.map (SiteMap.map (event_branch_conj branch dir))
+
 let context_merge : context -> context -> context =
   let merge_func _ =
     double_option_map blame_merge in
@@ -378,7 +384,7 @@ let touch_set_merge_across_branch br =
 (** computes the touch set for an expression *)
 let rec compute_touch_set (e : expr) =
   match e with
-  | Cond (_, e_t, e_f, b, _, _) -> 
+  | Cond (_, e_t, e_f, b) -> 
     LocalMap.merge (merge_event_opts_across_branch b)
       (compute_touch_set e_t) (compute_touch_set e_f)
   | Assign (x, _) -> LocalMap.singleton x event_one

@@ -38,48 +38,43 @@ let print_flow flow color =
 
 let false_pos, false_neg, true_pos, true_neg = ref 0, ref 0, ref 0, ref 0
 
-let check_func _ (fdecl, ctxt_opt) =
-  match ctxt_opt with
-  | None -> Format.printf "\nFunction %s: typechecking failed\n"
-              (func_to_string fdecl.name)
-  | Some ctxt -> (
-      let all_flows = compute_trace_set fdecl.body in
-      let check_func_param_result param result = (
-        let param_local, result_i = 
-          match param, result with
-          | Arg(_, param_s), Ret(i, _) -> Local param_s, i in
-        let result_blame = Context.context_lookup_ret result ctxt in
-        let param_result_flow_event =
-          match Context.SiteMap.find_opt (ArgSite param) result_blame with
-          | Some e -> e
-          | None -> Context.event_zero in
-        let interference_flows =
-          compute_interference_flows fdecl.body
-            param_local result_i in
-        let noninterference_flows =
-          TraceSet.diff all_flows interference_flows in
-        let () = TraceSet.iter (fun flow ->
-            if (trace_matches_event flow param_result_flow_event) then (
-              true_pos := !true_pos + 1
-            ) else (
-              false_neg := !false_neg + 1;
-              print_flow flow int_color)
-          ) interference_flows in
-        let () = TraceSet.iter (fun flow ->
-            if (trace_matches_event flow param_result_flow_event) then (
-              false_pos := !false_pos + 1;
-              print_flow flow nonint_color
-            ) else (
-              true_neg := !true_neg + 1)
-          ) noninterference_flows in
-        ()
-      ) in
-      List.iter (fun param ->
-          List.iter (fun result ->
-              check_func_param_result param result
-            ) fdecl.results
-        ) fdecl.params
-    )
+let check_func _ (fdecl, blame_list) =
+  let all_flows = compute_trace_set fdecl.body in
+  let check_func_param_result param result = (
+    let param_local, result_i = 
+      match param, result with
+      | Arg(_, param_s), Ret(i, _) -> Local param_s, i in
+    let result_blame = List.nth blame_list result_i in
+    let param_result_flow_event =
+      match Context.SiteMap.find_opt (ArgSite param) result_blame with
+      | Some e -> e
+      | None -> Context.event_zero in
+    let interference_flows =
+      compute_interference_flows fdecl.body
+        param_local result_i in
+    let noninterference_flows =
+      TraceSet.diff all_flows interference_flows in
+    let () = TraceSet.iter (fun flow ->
+        if (trace_matches_event flow param_result_flow_event) then (
+          true_pos := !true_pos + 1
+        ) else (
+          false_neg := !false_neg + 1;
+          print_flow flow int_color)
+      ) interference_flows in
+    let () = TraceSet.iter (fun flow ->
+        if (trace_matches_event flow param_result_flow_event) then (
+          false_pos := !false_pos + 1;
+          print_flow flow nonint_color
+        ) else (
+          true_neg := !true_neg + 1)
+      ) noninterference_flows in
+    ()
+  ) in
+  List.iter (fun param ->
+      List.iter (fun result ->
+          check_func_param_result param result
+        ) fdecl.results
+    ) fdecl.params
 
 let () = Expr.FuncMap.iter check_func typechecked_prog.tfunc_tbl
 

@@ -23,7 +23,7 @@ let triple_option_bind f opt1 opt2 opt3 =
   | _ -> None
 
 
-(* Given a function `f` that operates on lists of lengths `n`,
+(** Given a function `f` that operates on lists of lengths `n`,
    if `l` is of the form
    [[a1, a2, ..., an]] or [[a1], [a2], ..., [an]]
    then return f ([a1, a2, ..., an])
@@ -47,7 +47,7 @@ let equiv_n_singleton_bind n l f =
           if List.length l' = n then f l' else []
     )
       
-(* the blame placed on a function's results is a function
+(** the blame placed on a function's results is a function
    of the blame placed on its arguments. For the function declared
    by `fdecl`'s `i`th callsite, this computes the blame on result
    `res` given argument blames `blames` - note that there's a
@@ -133,80 +133,238 @@ let rec typecheck_aexp prog ctxt aexp : blame list =
           fdecl.num_params blame_list (func_blame fdecl l c)
       )
 
-(* use this instead of typecheck_aexp when a single blame
+(** use this instead of typecheck_aexp when a single blame
    (i.e. not a multi-result function) is expected *)
 let typecheck_aexp_single prog ctxt aexp : blame option =
   match (typecheck_aexp prog ctxt aexp) with
   | [b] -> Some b
   | _ -> None
 
-exception BadMultiAssign of int * int
-let rec typecheck_expr prog expr ctxt: context option =
-  match expr with
-  | Skip | Return _ ->
-    (* noop *)
-    Some ctxt
-  | Cond (a, e1, e2, branch, _, _) ->
-    (* a conditional checks each branch separately,
-       along with the guarding aexp `a`,
-       then combines them using the logic from
-       context_merge_cond. Return None if typechecking
-       fails for the subaexp or either subexpr*)
-    triple_option_bind
-      (fun blame_branch ctxt1 ctxt2 ->
-         Some (context_merge_cond
-                 branch blame_branch e1 e2 ctxt1 ctxt2))
-      (typecheck_aexp_single prog ctxt a)
-      (typecheck_expr prog e1 ctxt)
-      (typecheck_expr prog e2 ctxt)
-  | Assign (v, a) ->
-    (* an assignment checks the arithmetic expression,
-       if it typechecks to a blame then we assign that
-       blame into the context at `v`, otherwise we
-       return None *)
-    (Option.bind (typecheck_aexp_single prog ctxt a)
-       (fun blame -> Some (context_assign v blame ctxt)))
-  | FAssign (v_list, a) ->
-    (* fail gracefully if typechecking aexp a fails,
-       throw an exception if the number of variables on the LHS is wrong,
-       otherwise perform each assignment *)
-    let blame_list = typecheck_aexp prog ctxt a in
-    if blame_list = [] then None else
-    if List.length v_list <> List.length blame_list then
-      raise(BadMultiAssign(List.length v_list, List.length blame_list))
-    else
-      Some (List.fold_right2 context_assign v_list blame_list ctxt)
-  | Seq (e1, e2) ->
-    (* compose the checking of each subexpr as expected *)
-    Option.bind (typecheck_expr prog e1 ctxt) (typecheck_expr prog e2)
-  | Assert (v, _) ->
-    (* assertions render a value correct - i.e. blame-free *)
-    Some (context_assign_zero v ctxt)
-  | AExp _ ->
-    (* noop *)
-    Some ctxt
+(** pc_type represents a stack of branches that influenced the current
+    pc, along with the blame value for the aexp guarding those branches *)
+type pc_type = (branch * bool * blame) list
 
-let fdecl_starting_ctxt fdecl : context =
-  let fdecl_starting_arg =
-  List.fold_right
-    (fun (Arg(i, s)) -> 
-       context_assign (Local(s)) (blame_one (ArgSite(Arg(i, s)))))
-    fdecl.params in
-  let fdecl_starting_ret =
-  List.fold_right
-    (fun (Ret(i, s)) ->
-       context_assign (Local(s)) (blame_one (PhantomRetSite(Ret(i, s)))))
-    fdecl.results in
-  context_empty |> fdecl_starting_arg |> fdecl_starting_ret
+(** typechecking aims to output blames for assertions and returns,
+    so track those in an output_blames struct *)
+type output_blames = {
+  ret_blames: blame list;
+  assert_blames: blame AssertionMap.t}
 
-let typecheck_fdecl prog fdecl : context option =
-  Option.bind
-    (typecheck_expr prog fdecl.body (fdecl_starting_ctxt fdecl))
-    (fun ctxt -> ctxt
-                 |> (filter_to_ret_sites fdecl)
-                 (*|> Context.Refactor.refactorize_context*)
-                 |> Context.Refactor.context_reduce
-                 |> filter_phantom_ret)
+let empty_output i = {
+  ret_blames=List.init i (fun _ -> blame_zero);
+  assert_blames=AssertionMap.empty
+}
+
+let add_assertion_blame output_blames a blame =
+  {output_blames with
+   assert_blames=
+     AssertionMap.add a blame output_blames.assert_blames}
+
+exception BadAssertMerge of assertion
+let merge_assertion_blames = AssertionMap.merge
+    (fun a b1 b2 -> match b1, b2 with
+       | Some blame, None
+       | None, Some blame -> Some blame
+       (* the same assertion shouldn't be declared in two places *)
+       | _ -> raise (BadAssertMerge a))
+
+let add_return_blame output_blames ret_blames =
+  {output_blames with
+   ret_blames=List.rev_map2 blame_merge output_blames.ret_blames ret_blames}
+
+exception BadRetMerge of int * int
+let merge_output_blames
+    {ret_blames=r1; assert_blames=a1}
+    {ret_blames=r2; assert_blames=a2} =
+  let len1, len2 = List.length r1, List.length r2 in
+  if len1 <> len2 then raise (BadRetMerge(len1, len2)) else
+    {ret_blames=List.rev_map2 blame_merge r1 r2;
+     assert_blames=merge_assertion_blames a1 a2}
+    
+(** flow_ctxt represents the typechecking context for tracking
+    trough flow through non-terminal expressions (ones that don't end
+    with a return). It includes a blame context, a pc influence stack,
+    and a current return  blame for any returns that could have occurred
+    so far *)
+type flow_ctxt = {local_blames: context;
+                  pc: pc_type;
+                  output: output_blames}
+
+(** this represents passing a context through a branch -
+    adding it to the pc stack and conjuncting all local
+    blames with the branch event *)
+let flow_ctxt_branch_conj flow_ctxt branch dir blame =
+  {flow_ctxt with
+   local_blames=context_branch_conj branch dir flow_ctxt.local_blames;
+   pc=(branch, dir, blame) :: flow_ctxt.pc}
+
+exception TypecheckingLogicError of string
+
+(**
+   take a pc stack containing the branch `br`, and remove all elements
+   up to and including `br`
+*)
+let rec pc_strip_to_branch br =
+  function
+  | [] -> raise (TypecheckingLogicError "branch not found in pc")
+  | (br', _, _) :: tail ->
+    if br' = br then tail else pc_strip_to_branch br tail
+
+(** this is the result of typechecking an expresssion:
+    if non-terminal, a flow_ctxt; if a terminal, raw blames corresponding
+    to the return values; or an error *)
+type typecheck_result =
+  | NonTerminal of flow_ctxt
+  | Terminal of output_blames
+  | Error of string
+
+let merge_typecheck_results_across_branch br res1 res2 : typecheck_result =
+  try
+    match res1, res2 with
+    (* propagate errors *)
+    | Error e1, Error e2 ->
+      Error (Printf.sprintf "%s; %s" e1 e2)
+    | Error e, _ | _, Error e -> Error e
+    | NonTerminal ctxt_t, NonTerminal ctxt_f ->
+      let pc_t, pc_f = pc_strip_to_branch br ctxt_t.pc,
+                       pc_strip_to_branch br ctxt_f.pc in
+      if pc_t <> pc_f then
+        raise (TypecheckingLogicError "residual pc should be equal across branches")
+      else
+        NonTerminal {
+          local_blames =
+            context_merge ctxt_t.local_blames ctxt_f.local_blames;
+          pc = pc_t;
+          output = merge_output_blames ctxt_t.output ctxt_f.output
+        }
+    | NonTerminal ctxt_t, Terminal out_f ->
+      NonTerminal {ctxt_t with
+                  output=merge_output_blames ctxt_t.output out_f}
+    | Terminal out_t, NonTerminal ctxt_f ->
+      NonTerminal {ctxt_f with
+                  output=merge_output_blames out_t ctxt_f.output}
+    | Terminal out_t, Terminal out_f ->
+      Terminal (merge_output_blames out_t out_f)
+  with
+  | BadRetMerge(len1, len2) ->
+    Error (Printf.sprintf
+             "returns across branch %s contained %d and %d values"
+             (Expr_repr.branch_to_string br) len1 len2)
+  | BadAssertMerge a ->
+    Error (Printf.sprintf
+             "assertion %s occured twice across branch %s"
+             (Expr_repr.assertion_to_string a)
+             (Expr_repr.branch_to_string br))
+
+let rec typecheck_expr prog flow_ctxt : expr -> typecheck_result =
+  let typecheck_expr = typecheck_expr prog in
+  let typecheck_nonterminal flow_ctxt expr action =
+    match typecheck_expr flow_ctxt expr with
+    | NonTerminal ctxt -> action ctxt
+    | Terminal _ -> Error "Unreachable code"
+    | Error e -> Error e in
+  let typecheck_aexp = typecheck_aexp prog flow_ctxt.local_blames in
+  function
+  | Skip | AExp _ -> (* noops *) NonTerminal flow_ctxt
+  | Assign (x, a) -> (
+      match (typecheck_aexp a) with
+      | [a_blame] ->
+        (* unary expression, as expected, so perform assignment and continue *)
+        NonTerminal {flow_ctxt with
+                     local_blames = context_assign
+                         x a_blame flow_ctxt.local_blames}
+      | [] ->
+        (* aexp typechecking failed *)
+        Error (Format.sprintf
+                 "aexp in '%s = %s' did not typecheck"
+                 (local_to_string x)
+                 (Expr_repr.aexp_repr a))
+      | _ ->
+        (* aexp was multi-valued *)
+        Error (Format.sprintf
+                 "aexp in '%s = %s' is multi-valued"
+                 (local_to_string x)
+                 (Expr_repr.aexp_repr a))
+    )
+  | FAssign (x_list, a) -> (
+      let a_blames = typecheck_aexp a in
+      let x_len, a_len = List.length x_list, List.length a_blames in
+      if x_len <> a_len then
+        Error (Format.sprintf
+                 "aexp '%s' in assignment expected to be %d-valued but was %d-valued"
+                 (Expr_repr.aexp_repr a) x_len a_len)
+      else
+        NonTerminal {flow_ctxt with
+                     local_blames =
+                       List.fold_right2 context_assign x_list a_blames
+                         flow_ctxt.local_blames}
+    )
+  | Seq (e1, e2) -> (
+      typecheck_nonterminal flow_ctxt e1 (fun flow_ctxt ->
+          typecheck_expr flow_ctxt e2)
+    )
+  | Assert (x, _, a) -> (
+      match context_lookup x flow_ctxt.local_blames with
+      | None -> Error (Format.sprintf
+                         "local '%s' in assertion not defined"
+                         (local_to_string x))
+      | Some blame -> NonTerminal {
+          flow_ctxt with
+          (* after the assertion, this value is known to be correct *)
+          local_blames=context_assign_zero x flow_ctxt.local_blames;
+          (* record the blame for the asserted value *)
+          output=add_assertion_blame flow_ctxt.output a blame}
+    )
+  | Return a_list -> (
+      let a_blames = List.fold_right
+          (compose typecheck_aexp List.append) a_list [] in
+      let curr_ret_len, a_len =
+        List.length flow_ctxt.output.ret_blames,
+        List.length a_blames in
+      if curr_ret_len = a_len then
+        Terminal (add_return_blame flow_ctxt.output a_blames)
+      else
+        Error (Format.sprintf
+                 "'return %s' provided %d values but prior return provided %d"
+                 (Expr_repr.aexp_reprs a_list) a_len curr_ret_len)
+    )
+  | Cond(a, e_t, e_f, br) -> (
+      match typecheck_aexp a with
+      | [a_blame] ->
+        merge_typecheck_results_across_branch br
+          (typecheck_expr
+             (flow_ctxt_branch_conj flow_ctxt br true a_blame)
+             e_t)
+          (typecheck_expr
+             (flow_ctxt_branch_conj flow_ctxt br false a_blame)
+             e_f)
+      | _ -> Error (Format.sprintf "aexp '%s' in branch %s is multi-valued"
+                      (Expr_repr.aexp_repr a)
+                      (Expr_repr.branch_to_string br))
+    )
+
+let fdecl_starting_ctxt fdecl : flow_ctxt =
+  {local_blames=
+     List.fold_right
+       (fun (Arg(i, s)) -> 
+          context_assign (Local(s)) (blame_one (ArgSite(Arg(i, s)))))
+       fdecl.params context_empty;
+   pc=[];
+   output=empty_output (List.length fdecl.results)}
+
+exception IllTypedFunction of string
+
+let typecheck_fdecl prog fdecl : output_blames =
+  match typecheck_expr prog (fdecl_starting_ctxt fdecl) fdecl.body with
+  | Terminal out -> out
+  | NonTerminal _ ->
+    raise (IllTypedFunction (Format.sprintf
+                               "Function %s is missing a return statement"
+                               (func_to_string fdecl.name)))
+  | Error e ->
+    raise (IllTypedFunction (Format.sprintf
+                               "Function %s is ill-typed: %s"
+                               (func_to_string fdecl.name) e))
 
 (**
    provides a complete typechecked program. Functions are mapped to
@@ -214,17 +372,25 @@ let typecheck_fdecl prog fdecl : context option =
    The remaining maps provide source-file-byte-indexed information about
    what is represented by each byte for pretty printing
    *)
-type typechecked_program = {tfunc_tbl: (fdecl * context option) FuncMap.t;
+type typechecked_program = {tfunc_tbl: (fdecl * blame list) FuncMap.t;
+                            assertion_blames: blame AssertionMap.t;
                             label_tbl: label IntMap.t;
                             arg_tbl: (func * arg) IntMap.t;
                             ret_tbl: (func * ret) IntMap.t}
 
-let typecheck_program p : typechecked_program =
-  {tfunc_tbl=FuncMap.map (fun fdecl ->
-       (fdecl, typecheck_fdecl p fdecl)) p.func_tbl;
-   label_tbl=p.label_tbl;
-   arg_tbl=p.arg_tbl;
-   ret_tbl=p.ret_tbl}
+let typecheck_program prog : typechecked_program =
+  FuncMap.fold (fun fname fdecl tprog ->
+      let {ret_blames=ret_blames; assert_blames=assert_blames} =
+        typecheck_fdecl prog fdecl in
+      {tprog with
+       tfunc_tbl=FuncMap.add fname (fdecl, ret_blames) tprog.tfunc_tbl;
+       assertion_blames=merge_assertion_blames assert_blames tprog.assertion_blames}
+    ) prog.func_tbl 
+    {tfunc_tbl=FuncMap.empty;
+     assertion_blames=AssertionMap.empty;
+     label_tbl=prog.label_tbl;
+     arg_tbl=prog.arg_tbl;
+     ret_tbl=prog.ret_tbl}
 
 (**
    this exists to abstract the process of indexing information about

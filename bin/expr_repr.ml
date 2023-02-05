@@ -16,7 +16,6 @@ let int_superscript_repr =
 let int_subscript_repr =
   int_to_digit_repr ["₀"; "₁"; "₂"; "₃"; "₄"; "₅"; "₆"; "₇"; "₈"; "₉"]
 
-
 let branch_to_string (Branch i) =
   Printf.sprintf "ᴮ%s" (int_superscript_repr i)
 
@@ -26,13 +25,16 @@ let call_to_string (Call (_, i)) =
 let label_to_string (Label i) =
   Printf.sprintf "ᴸ%s" (int_superscript_repr i)
 
+let assertion_to_string (Assertion i) =
+  Printf.sprintf "%s" (int_subscript_repr i)
+
 let list_to_string to_str =
   function
   | [] -> ""
   | x :: l ->
     List.fold_left (fun s y -> s ^ ", " ^ to_str y) (to_str x) l
       
-let rec aexp_repr aexp =
+let rec aexp_repr aexp : string =
   match aexp with
   | Var (v, l) ->
     (Printf.sprintf "%s%s" (local_to_string v) (label_to_string l))
@@ -50,7 +52,7 @@ let rec aexp_repr aexp =
        (aexp_reprs a_list))
 and aexp_reprs alist = list_to_string aexp_repr alist
     
-let program_string (p : program) =
+let program_string (p : program) : string =
   let rec ntabs tabs =
     if tabs = 0 then ""
     else Printf.sprintf "\t%s" (ntabs (tabs - 1))
@@ -62,7 +64,7 @@ let program_string (p : program) =
        | Skip ->
          true,
          "skip"
-       | Cond (a, e_t, e_f, b, _, _) ->
+       | Cond (a, e_t, e_f, b) ->
          true,
          Printf.sprintf "if%s [%s] then {\n%s\n%s} else {\n%s\n%s}"
            (branch_to_string b) (aexp_repr a)
@@ -79,10 +81,10 @@ let program_string (p : program) =
          false,
          Printf.sprintf "%s\n%s"
            (expr_repr e1 tabs) (expr_repr e2 tabs)
-       | Assert (v, a) ->
+       | Assert (v, aexp, a) ->
          true,
-         Printf.sprintf "assert %s by %s"
-           (local_to_string v) (aexp_repr a)
+         Printf.sprintf "assert%s %s by %s"
+           (assertion_to_string a) (local_to_string v) (aexp_repr aexp)
        | AExp a ->
          true,
          aexp_repr a
@@ -94,7 +96,7 @@ let program_string (p : program) =
   let fdecl_repr fdecl =
     Printf.sprintf "def %s:\n%s"
       (func_to_string fdecl.name)
-      (expr_repr fdecl.body 1)
+       (expr_repr fdecl.body 1)
   in
   let acc_fdecl _ fdecl prior_repr =
     (if prior_repr = "" then "" else prior_repr ^ "\n\n") ^ (fdecl_repr fdecl) in

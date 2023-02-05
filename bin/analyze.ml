@@ -39,11 +39,10 @@ struct
     Expr.BranchMap.find br (BranchesIndex.get())
 
   let get_event_for_func_ret : Expr.func -> Expr.ret -> Context.blame =
-    fun func ret ->
+    fun func (Expr.Ret(i, _))  ->
     let prog = get_program () in
-    let _, ctxt_opt = Expr.FuncMap.find func prog in
-    let ctxt = force_some ctxt_opt in
-    Context.context_lookup_ret ret ctxt
+    let _, blame_list = Expr.FuncMap.find func prog in
+    List.nth blame_list i
 
   let get_call_event_blame : call_event -> Context.event = fun call_event ->
     let blame = get_event_for_func_ret call_event.ce_func call_event.ce_ret in
@@ -598,10 +597,8 @@ struct
     *)
     let get_all_prog_omegas _ = Expr.(
         let prog = get_program () in
-        let all_labels = FuncMap.fold (fun _ (fdecl, ctxt_opt) ->
-            match ctxt_opt with
-            | None -> id
-            | Some _ -> LabelSet.union (expr_labels fdecl.body))
+        let all_labels = FuncMap.fold (fun _ (fdecl, _) ->
+            LabelSet.union (expr_labels fdecl.body))
             prog LabelSet.empty in
         let fdecl_omegas fdecl =
           List.fold_right (fun ret omegas ->
@@ -621,12 +618,9 @@ struct
                        omegas
                    ) all_labels omegas)
             ) fdecl.results OmegaSet.empty in
-        FuncMap.fold (fun _ (fdecl, ctxt_opt) omegas ->
-            match ctxt_opt with
-            | None -> omegas
-            | Some _ -> (
-                OmegaSet.union (fdecl_omegas fdecl) omegas
-              )) prog OmegaSet.empty
+        FuncMap.fold (fun _ (fdecl, _) omegas ->
+            OmegaSet.union (fdecl_omegas fdecl) omegas
+          ) prog OmegaSet.empty
       )
 
 
