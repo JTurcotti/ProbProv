@@ -1,6 +1,6 @@
-(executable
- (public_name probprovtypes)
- (name main)
+(executables
+ (names main flow_main flow_check)
+ (public_names probprovtypes flow_main flow_check)
  (libraries probprovtypes unix))
 
 (ocamllex lexer)
