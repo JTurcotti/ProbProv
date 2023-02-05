@@ -67,8 +67,6 @@ type internal_event = bool BranchMap.t
    -i.e. no branches have to be taken for it to occur *)
 let internal_event_one : internal_event = BranchMap.empty
 
-exception BranchAlreadyPresentInEvent of branch
-    
 (** internal_event_conj returns the internal event that occurs
     if `ie` occurs and branch `br` is taken `dir`.
     
@@ -79,6 +77,20 @@ let internal_event_conj (AIE (br, dir)) ie : internal_event option =
   | None -> Some (BranchMap.add br dir ie)
   | Some dir' ->
     if dir = dir' then Some ie else None
+
+(** if (ie1 ∨ ie2) reduces to a simpler expression because they differ
+    only by a single branch present in both, return the representation
+    of that disjunction as a single internal event lacking that single
+    branch *)
+let internal_events_disj_reduce ie1 ie2 : internal_event option =
+  let diff_map = BranchMap.merge (fun _ b1 b2 ->
+      match b1, b2 with
+      | Some b1, Some b2 -> if b1 = b2 then None else Some true
+      | _ -> Some false) ie1 ie2 in
+  if BranchMap.cardinal diff_map <> 1 then None else
+    let diff_branch, in_both = BranchMap.choose diff_map in
+    if in_both then Some (BranchMap.remove diff_branch ie1) else
+      None
 
 (* end internal event utilities *)
 
@@ -102,12 +114,29 @@ let event_zero : event =
 let event_one : event =
   IEMap.singleton internal_event_one external_event_one
 
+(* TODO: replace this equality checking of maps and sets with calls to
+compare functions - I have a bad feeling about this*)
+   
+let events_find_reduction event1 event2 =
+  IEMap.fold (fun ie1 ee1 ->
+      IEMap.fold (fun ie2 ee2 opt_out ->
+          match opt_out with
+          | Some v -> Some v
+          | None ->
+            if ee1 <> ee2 then None else
+              match internal_events_disj_reduce ie1 ie2 with
+              | None -> None
+              | Some ie -> Some (ie1, ie2, ie, ee1)
+        ) event2) event1 None
+
 (** combines two events - result occurs if either of the sources do *)
-let event_disj : event -> event -> event =
-  let merge_func _ =
-    double_option_map external_event_disj
-  in
-  IEMap.merge merge_func
+let rec event_disj : event -> event -> event =
+  fun e1 e2 ->
+  match events_find_reduction e1 e2 with
+  | None -> IEMap.merge (fun _ -> double_option_map external_event_disj) e1 e2
+  | Some (ie1, ie2, ie, ee) ->
+    IEMap.add ie ee
+      (event_disj (IEMap.remove ie1 e1) (IEMap.remove ie2 e2))
 
 (** conjuncts an event with a new atomic external event -
    result occurs if original occurs and atomic external event occurs *)
