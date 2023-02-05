@@ -671,11 +671,31 @@ struct
             )
         ) mp Expr.FuncMap.empty
 
+    
+
+    let bad_omega_thresh = 0.0001
+    let heat_color = Colors.trad_heat
+    let err_color = Colors.err_yellow
+    
+    let scale_color (color : Colors.rgb) vl =
+      if vl < 0.0  -. bad_omega_thresh || vl > 1.0 +. bad_omega_thresh then (
+        bad_omega_detected := true;
+        (err_color.r, err_color.g, err_color.b)
+      ) else (
+        let scale i =
+          Float.to_int (255. -. vl *. (255. -. (Float.of_int i))) in
+        (scale color.r, scale color.g, scale color.b))
+
+    let scale_heat_color = scale_color heat_color
+
     let format_rgb_char ff (r, g, b) c =
       Format.fprintf ff "\027[1m\027[38;2;%d;%d;%dm%c\027[0m" r g b c
 
     let format_color_char ff {Colors.r=r; Colors.g=g; Colors.b=b} c =
       format_rgb_char ff (r, g, b) c
+
+    let format_weak_color_char ff color vl c =
+      format_rgb_char ff (scale_color color vl) c
 
     let format_rgb_float ff (r, g, b) f =
       (* this looks silly but prevents negative zero from being displayed *)
@@ -684,13 +704,13 @@ struct
 
     let format_rgb_str ff (r, g, b) s =
       Format.fprintf ff "\027[38;2;%d;%d;%dm%s\027[0m" r g b s
-        
+
     let format_color_str {Colors.r=r; Colors.g=g; Colors.b=b} ff c =
       format_rgb_str ff (r, g, b) c
 
     let format_rgb_int ff (r, g, b) d =
       Format.fprintf ff "\027[38;2;%d;%d;%dm%d\027[0m" r g b d
-        
+
     let format_color_int {Colors.r=r; Colors.g=g; Colors.b=b} ff c =
       format_rgb_int ff (r, g, b) c
 
@@ -698,27 +718,11 @@ struct
     let format_plain_char ff c =
       Format.fprintf ff "%c" c
 
-    let bad_omega_thresh = 0.0001
-
-
-    let heat_color = Colors.trad_heat
-    let err_color = Colors.err_yellow
-
-    let scale_heat_color vl =
-      if vl < 0.0  -. bad_omega_thresh || vl > 1.0 +. bad_omega_thresh then (
-        bad_omega_detected := true;
-        (err_color.r, err_color.g, err_color.b)
-      ) else (
-        let scale i =
-          Float.to_int (255. -. vl *. (255. -. (Float.of_int i))) in
-        (scale heat_color.r, scale heat_color.g, scale heat_color.b))
-
     let format_by_float ff vl c =
-      format_rgb_char ff (scale_heat_color vl) c
+      format_rgb_char ff (scale_color heat_color vl) c
 
     let format_float_by_float ff vl =
-      format_rgb_float ff (scale_heat_color vl) vl
-
+      format_rgb_float ff (scale_color heat_color vl) vl
 
     let format_program_blame ff omegas =
       let sorted_omegas = sort_omegas omegas in
@@ -757,22 +761,54 @@ struct
           (label_tbl : Expr.label Expr.IntMap.t)
           (label_set : Expr.LabelSet.t) =
 
-        let format_char i c =
+        let i_in_label_tbl i =
           match Expr.IntMap.find_opt i label_tbl with
-          | None -> format_plain_char ff c
-          | Some l -> if Expr.LabelSet.mem l label_set then
-              format_color_char ff color c else
-              format_plain_char ff c in
-        
+          | None -> false
+          | Some l -> Expr.LabelSet.mem l label_set in
+
+        let line_num, labelled_lines = ref 0, ref Expr.IntMap.empty in
         let char_num = ref 0 in
         let get_char _ = let i = !char_num in char_num := i + 1; i in
         let ic = open_in input_file in
+
+        let () = (try
+                    while true do
+                      let c = input_char ic in 
+                      let i = get_char() in
+                      if c = '\n' then
+                        (line_num := !line_num + 1) else
+                        labelled_lines := (
+                          Expr.IntMap.update !line_num (
+                            function
+                            | None -> Some (false, Expr.IntSet.singleton i)
+                            | Some (labelled, chars) ->
+                              Some (labelled || (i_in_label_tbl i),
+                                    Expr.IntSet.add i chars)
+                          ) !labelled_lines)
+                    done;
+                  with End_of_file -> ()) in
+        let line_labelled_chars = 
+          Expr.IntMap.fold (fun _ (labelled, chars) ->
+              if labelled then Expr.IntSet.union chars else id)
+            !labelled_lines Expr.IntSet.empty in
+        let i_in_labelled_line i = Expr.IntSet.mem i line_labelled_chars in
+
+        let format_char i c =
+          if i_in_label_tbl i then
+            format_color_char ff color c else (
+            if i_in_labelled_line i then
+              format_weak_color_char ff color 0.3 c
+            else
+              format_plain_char ff c)in
+
+        let () = char_num := 0 in
+        let ic = open_in input_file in
         try
-            while true do
-              let c = input_char ic in
-              format_char (get_char ()) c
-            done;
-          with End_of_file -> ()
+          while true do
+            let c = input_char ic in
+            format_char (get_char ()) c
+          done;
+        with End_of_file -> ()
     end
 
     module VeryPrettyPrint =
