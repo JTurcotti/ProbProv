@@ -170,7 +170,7 @@ let merge_assertion_blames = AssertionMap.merge
 
 let add_return_blame output_blames ret_blames =
   {output_blames with
-   ret_blames=List.rev_map2 blame_merge output_blames.ret_blames ret_blames}
+   ret_blames=List.map2 blame_merge output_blames.ret_blames ret_blames}
 
 exception BadRetMerge of int * int
 let merge_output_blames
