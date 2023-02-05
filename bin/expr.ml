@@ -47,12 +47,18 @@ type aexp =
 
 type expr =
   | Skip
-  | Cond of aexp * expr * expr * branch
+  | Cond of aexp (* the guard *)
+            * expr (* true branch *)
+            * expr (* false branch *)
+            * branch (* branch label *)
+            * bool (* true branch ends in return? *)
+            * bool (* false branch ends in return? *)
   | Assign of local * aexp
   | FAssign of (local list) * aexp (* multi-assign to a function result *)
   | Seq of expr * expr
   | Assert of local * aexp
   | AExp of aexp
+  | Return of aexp list
 
 type fdecl = {
   name: func;
@@ -73,6 +79,7 @@ end
 
 module FuncMap = Map(Func)
 module IntMap = Map(Int)
+module IntSet = Set(Int)
 type program = {func_tbl: fdecl FuncMap.t;
                 label_tbl: label IntMap.t;
                 arg_tbl: (func * arg) IntMap.t;
@@ -81,7 +88,23 @@ type program = {func_tbl: fdecl FuncMap.t;
 let lookup_func_opt f prog : fdecl option =
   FuncMap.find_opt f prog.func_tbl
 
+let rec expr_ends_with_ret =
+  (function
+    | Skip | Assign (_, _) | FAssign(_, _) | Assert(_, _) | AExp _ ->
+      false
+    | Cond (_, _, _, _, t_rets, f_rets) ->
+      t_rets && f_rets
+    | Seq (_, e) ->
+      expr_ends_with_ret e
+    | Return _ ->
+      true
+  )
+
+
 exception LabelErr of string
+
+exception ReturnPlacementYieldsUnreachableCode
+exception FunctionMissingReturn
 
 (* This function takes a raw_program (see raw_expr)
    as parsed from source, and adds associates all of its
@@ -135,60 +158,83 @@ let label_prog raw_prog =
       let get_ret i s s_pos e_pos fname =
         let r = Ret(i, s) in
         update_tbl s_pos e_pos ret_tbl (fname, r); r in
-      
+
       let rec label_aexp {data=raw_aexp; start_pos=s_pos; end_pos=e_pos} =
         match raw_aexp with
-      | Raw_Var s -> Var(Local(s), next_label s_pos e_pos)
-      | Raw_Const -> Const(next_label s_pos e_pos)
-      | Raw_Binop (a, a') ->
-        Binop(label_aexp a, label_aexp a', next_label s_pos e_pos)
-      | Raw_Unop a -> Unop(label_aexp a, next_label s_pos e_pos)
-      | Raw_FApp (s, a_list) ->
-        let () = if not (is_func_name s) then
-            raise (LabelErr (s ^ " not a function name")) else () in
-        let f = Func(s) in
-        FApp(f, List.map label_aexp a_list,
-             next_label s_pos e_pos, next_call f)
-    in
-    let rec label_expr raw_expr =
-      (match raw_expr with
-       | Raw_Skip -> Skip
-       | Raw_Cond (a, e_t, e_f) ->
-         Cond(label_aexp a, label_expr e_t, label_expr e_f,
-              next_branch())
-       | Raw_Assign (s, a) ->
-         Assign(Local(s), label_aexp a)
-       | Raw_FAssign (s_list, a) ->
-         FAssign(List.map (fun s -> Local(s)) s_list, label_aexp a)
-       | Raw_Seq (e, e') ->
-         Seq(label_expr e, label_expr e')
-       | Raw_Assert (s, a) ->
-         Assert(Local(s), label_aexp a)
-       | Raw_AExp a -> AExp(label_aexp a)) in
-    let wrap_fold list transformer =
-      let out, _ = List.fold_right (fun s (out, i) ->
-          ((transformer i s) :: out, i - 1)) list ([], List.length list - 1) in out
-    in
-    let label_fdecl raw_fdecl =
-      let fname = Func(raw_fdecl.raw_name) in
-      {
-        name = fname;
-        params = wrap_fold raw_fdecl.raw_params
-            (fun i (name, s_pos, e_pos)  -> get_arg i name s_pos e_pos fname);
-        num_params = List.length raw_fdecl.raw_params;
-        results = wrap_fold raw_fdecl.raw_results
-            (fun i (name, s_pos, e_pos) -> get_ret i name s_pos e_pos fname);
-        num_results = List.length raw_fdecl.raw_results;
-        body = label_expr raw_fdecl.raw_body;
-      }
-    in
-    let func_tbl = List.fold_left (fun prog fdecl ->
-        FuncMap.add (Func(fdecl.raw_name)) (label_fdecl fdecl) prog
-      ) FuncMap.empty flist in
-    {func_tbl=func_tbl;
-     label_tbl=(!label_tbl);
-     arg_tbl=(!arg_tbl);
-     ret_tbl=(!ret_tbl)}
+        | Raw_Var s -> Var(Local(s), next_label s_pos e_pos)
+        | Raw_Const -> Const(next_label s_pos e_pos)
+        | Raw_Binop (a, a') ->
+          Binop(label_aexp a, label_aexp a', next_label s_pos e_pos)
+        | Raw_Unop a -> Unop(label_aexp a, next_label s_pos e_pos)
+        | Raw_FApp (s, a_list) ->
+          let () = if not (is_func_name s) then
+              raise (LabelErr (s ^ " not a function name")) else () in
+          let f = Func(s) in
+          FApp(f, label_aexps a_list,
+               next_label s_pos e_pos, next_call f)
+      and label_aexps alist = List.map label_aexp alist
+      in
+      let rec label_expr =
+        (function
+          | Raw_Skip -> Skip
+          | Raw_Cond (a, e_t, e_f) ->
+            let e_t', e_f' = label_expr e_t, label_expr e_f in
+            Cond(label_aexp a, e_t', e_f',
+                 next_branch(),
+                 expr_ends_with_ret e_t',
+                 expr_ends_with_ret e_f')
+         | Raw_Assign (s, a) ->
+           Assign(Local(s), label_aexp a)
+         | Raw_FAssign (s_list, a) ->
+           FAssign(List.map (fun s -> Local(s)) s_list, label_aexp a)
+         | Raw_Seq (e, e') ->
+           Seq(label_expr e, label_expr e')
+         | Raw_Assert (s, a) ->
+           Assert(Local(s), label_aexp a)
+         | Raw_AExp a -> AExp(label_aexp a)
+         | Raw_Return alist -> Return(label_aexps alist)
+        ) in
+      (*validate_expr ensures there is no unreachable code in this expression,
+          or else raises an exception *)
+      let rec validate_expr expr =
+        match expr with
+        | Seq (e1, e2) -> (
+            if expr_ends_with_ret e1 then
+              raise ReturnPlacementYieldsUnreachableCode else
+              validate_expr e1; validate_expr e2)
+        | Cond(_, e_t, e_f, _, _, _) -> (
+            validate_expr e_t; validate_expr e_f)
+        | _ -> () in
+      let validate_func_body body =
+        let () =
+          validate_expr body;
+          if not (expr_ends_with_ret body) then
+            raise FunctionMissingReturn else () in
+        body in
+      let wrap_fold list transformer =
+        let out, _ = List.fold_right (fun s (out, i) ->
+            ((transformer i s) :: out, i - 1)) list ([], List.length list - 1) in out
+      in
+      let label_fdecl raw_fdecl =
+        let fname = Func(raw_fdecl.raw_name) in
+        {
+          name = fname;
+          params = wrap_fold raw_fdecl.raw_params
+              (fun i (name, s_pos, e_pos)  -> get_arg i name s_pos e_pos fname);
+          num_params = List.length raw_fdecl.raw_params;
+          results = wrap_fold raw_fdecl.raw_results
+              (fun i (name, s_pos, e_pos) -> get_ret i name s_pos e_pos fname);
+          num_results = List.length raw_fdecl.raw_results;
+          body = validate_func_body (label_expr raw_fdecl.raw_body);
+        }
+      in
+      let func_tbl = List.fold_left (fun prog fdecl ->
+          FuncMap.add (Func(fdecl.raw_name)) (label_fdecl fdecl) prog
+        ) FuncMap.empty flist in
+      {func_tbl=func_tbl;
+       label_tbl=(!label_tbl);
+       arg_tbl=(!arg_tbl);
+       ret_tbl=(!ret_tbl)}
   )
 
 let rec aexpr_labels : aexp -> LabelSet.t =
@@ -214,7 +260,7 @@ let aexpr_label : aexp -> label =
 let rec expr_labels : expr -> LabelSet.t =
   function
   | Skip -> LabelSet.empty
-  | Cond (a, e1, e2, _) ->
+  | Cond (a, e1, e2, _, _, _) ->
     LabelSet.union (aexpr_labels a) (LabelSet.union
                                        (expr_labels e1)
                                        (expr_labels e2))
@@ -223,10 +269,13 @@ let rec expr_labels : expr -> LabelSet.t =
   | Seq (e1, e2) -> LabelSet.union (expr_labels e1) (expr_labels e2)
   | Assert (_, a) -> aexpr_labels a
   | AExp a -> aexpr_labels a
-                
+  | Return alist -> List.fold_right
+                      (compose aexpr_labels LabelSet.union)
+                      alist LabelSet.empty
+
 let rec expr_branches : expr -> BranchSet.t =
   function
-  | Cond (_, e1, e2, b) ->
+  | Cond (_, e1, e2, b, _, _) ->
     BranchSet.add b (
       BranchSet.union
         (expr_branches e1)

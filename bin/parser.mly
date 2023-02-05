@@ -18,7 +18,7 @@
 %token <int * int> BINOP
 %token <int * int> UNOP
 %token <int * int> DOT
-%token LPAREN RPAREN LBRACE RBRACE EQ IF ELSE SEMI SKIP DEF EOF TO ASSERT BY COMMA
+%token LPAREN RPAREN LBRACE RBRACE EQ IF ELSE SEMI SKIP DEF EOF TO ASSERT BY COMMA RETURN
 
 %start main
 %type <raw_program> main
@@ -61,6 +61,7 @@ expr:
   | expr SEMI expr {Raw_Seq($1, $3)}
   | ASSERT IDENT BY aexp {Raw_Assert(fst $2, $4)}
   | aexp {Raw_AExp($1)}
+  | RETURN aexps {Raw_Return($2)}
 
 some_aexps: aexp {$1 :: []}
   | aexp COMMA some_aexps {$1 :: $3}

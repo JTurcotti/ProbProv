@@ -32,6 +32,7 @@ rule token = parse
      |	"skip" {SKIP}
      |	"def"  {DEF}
      | 	"assert" {ASSERT}
+     |	"return" {RETURN}
      |	"by" {BY}
      | ['a'-'z''A'-'Z']['a'-'z''A'-'Z''0'-'9'''''_']* as ident {
        IDENT(ident, Lexing.lexeme_start lexbuf, Lexing.lexeme_end lexbuf)

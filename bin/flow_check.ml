@@ -1,5 +1,3 @@
-open Util
-
 let int_color, nonint_color = Colors.gold, Colors.cyan
 
 let program = Io.program
@@ -47,9 +45,9 @@ let check_func _ (fdecl, ctxt_opt) =
   | Some ctxt -> (
       let all_flows = compute_trace_set fdecl.body in
       let check_func_param_result param result = (
-        let param_s, result_s = 
+        let param_local, result_i = 
           match param, result with
-          | Arg(_, param_s), Ret(_, result_s) -> param_s, result_s in
+          | Arg(_, param_s), Ret(i, _) -> Local param_s, i in
         let result_blame = Context.context_lookup_ret result ctxt in
         let param_result_flow_event =
           match Context.SiteMap.find_opt (ArgSite param) result_blame with
@@ -57,7 +55,7 @@ let check_func _ (fdecl, ctxt_opt) =
           | None -> Context.event_zero in
         let interference_flows =
           compute_interference_flows fdecl.body
-            (Local param_s) (Local result_s) in
+            param_local result_i in
         let noninterference_flows =
           TraceSet.diff all_flows interference_flows in
         let () = TraceSet.iter (fun flow ->

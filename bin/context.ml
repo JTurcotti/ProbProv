@@ -28,33 +28,33 @@ type aee_conjunction = AEEConjunctiveSet.t
 
 module AEEDNFSet = Set(struct type t = aee_conjunction end)
 
-(* an external event is a combination of atomic
+(** an external event is a combination of atomic
    external events in DNF *)
 type external_event = AEEDNFSet.t
 
 (* external event utilities *)
 
-(* the external event that always occurs *)
+(** the external event that always occurs *)
 let external_event_one : external_event =
   AEEDNFSet.singleton aee_one
 
-(* the external event that never occurs *)
+(** the external event that never occurs *)
 let external_event_zero : external_event =
   AEEDNFSet.empty
 
-(* conjunct a new atomic external event onto this external event *)
+(** conjunct a new atomic external event onto this external event *)
 let external_event_conj aee ee : external_event =
   AEEDNFSet.map (aee_conj aee) ee
 
-(* disjunt together two external events *)
+(** disjunt together two external events *)
 let external_event_disj = AEEDNFSet.union
 
 (* end external event utilities *)
 
-(* an atomic_internal_event is a preference about how a branch is taken *)
+(** an atomic_internal_event is a preference about how a branch is taken *)
 type atomic_internal_event = AIE of branch * bool
 
-(* an internal event is statement about branches being taken.
+(** an internal event is statement about branches being taken.
    Not present means "don't care"
    mapped to true means must be taken true
    mapped to false means must be taken false
@@ -63,14 +63,17 @@ type internal_event = bool BranchMap.t
 
 (* internal event utilities *)
 
-(* the internal event that "always occurs"
+(** the internal event that "always occurs"
    -i.e. no branches have to be taken for it to occur *)
 let internal_event_one : internal_event = BranchMap.empty
 
 exception BranchAlreadyPresentInEvent of branch
-(* return the internal event that occurs if `ie` occurs and
-   branch `br` is taken `dir`. Throws an exception of `ie`
-   already states how `b` must be taken*)
+    
+(** internal_event_conj returns the internal event that occurs
+    if `ie` occurs and branch `br` is taken `dir`.
+    
+    Throws an exception of `ie`
+    already states how `b` must be taken*)
 let internal_event_conj (AIE (br, dir)) ie : internal_event =
   let () = if BranchMap.mem br ie then
       raise (BranchAlreadyPresentInEvent br) else () in
@@ -79,7 +82,7 @@ let internal_event_conj (AIE (br, dir)) ie : internal_event =
 
 module IEMap = Map(struct type t = internal_event end)
 
-(* an event is a set of sequences of branches (internal events),
+(** an event is a set of sequences of branches (internal events),
    each associated with an external event.
 
    The interpretation is that an event "happens" iff, for any KV pair
@@ -93,23 +96,23 @@ type event = external_event IEMap.t
 let event_zero : event =
   IEMap.empty
 
-(* the event that "always occurs" *)
+(** the event that "always occurs" *)
 let event_one : event =
   IEMap.singleton internal_event_one external_event_one
 
-(* combines two events - result occurs if either of the sources do *)
+(** combines two events - result occurs if either of the sources do *)
 let event_disj : event -> event -> event =
   let merge_func _ =
     double_option_map external_event_disj
   in
   IEMap.merge merge_func
 
-(* conjuncts an event with a new atomic external event -
+(** conjuncts an event with a new atomic external event -
    result occurs if original occurs and atomic external event occurs *)
 let event_external_conj aee : event -> event =
   IEMap.map (external_event_conj aee)
 
-(* conjuncts an event with a new atomic internal event -
+(** conjuncts an event with a new atomic internal event -
    result occurs if any case of the original occurs followed
    by the passed internal event *)
 let event_internal_conj aie e : event =
@@ -119,7 +122,7 @@ let event_internal_conj aie e : event =
 
 exception BadPrecondition
 
-(* returns the conjunction of two events
+(** returns the conjunction of two events
       Precondition: e1 contains no external events *)
 let event_conj e1 e2 : event =
   let e2_with_ie ie =
@@ -133,7 +136,7 @@ let event_conj e1 e2 : event =
   IEMap.fold acc_func e1 IEMap.empty
 
 
-(* performs a merge of event options, doing either the trivial thing
+(** performs a merge of event options, doing either the trivial thing
    or applying event_disj if two non-empties are passed
    meant to be used in Map.Make().Merge *)
 let merge_event_opts _ =
@@ -151,7 +154,7 @@ let merge_events_across_branch br _ e1 e2 =
        (event_internal_conj (AIE(br, true)) e1)
        (event_internal_conj (AIE(br, false)) e2))
 
-(* performs a merge of event options, first applying
+(** performs a merge of event options, first applying
    internal event conjunctions in accordance with the passed branch
    meant to be used in Map.Make().Merge (hence the ignored arg for
    the key being merged at) *)
@@ -206,7 +209,7 @@ type site =
      they must not be present at the end of the function *)
   | PhantomRetSite of ret
 
-(* checks whether the passed site is a phantom return *)
+(** checks whether the passed site is a phantom return *)
 let is_phantom_ret s =
   match s with
   | PhantomRetSite _ -> true
@@ -214,7 +217,7 @@ let is_phantom_ret s =
 
 module SiteMap = Map(struct type t = site end)
 
-(* a blame provides all the information one could care to know about
+(** a blame provides all the information one could care to know about
    provenance of a value - initially it is a very complex object but
    eventually it will just map LabelSites and ArgSites to [0, 1] numbers
    interpretation is that this blame object indicates a dependence on each site iff site is mapped to some event and that event occurs
@@ -223,25 +226,25 @@ type blame = event SiteMap.t
 
 (* blame utilities *)
 
-(* no blame attributed for this value - "always correct" *)
+(** no blame attributed for this value - "always correct" *)
 let blame_zero : blame = SiteMap.empty
 
-(* blame fully placed on the passed site *)
+(** blame fully placed on the passed site *)
 let blame_one a : blame = SiteMap.singleton a event_one
 
-(* combine the blame from two sources -
+(** combine the blame from two sources -
    out blames a site iff either of the sources do *)
 let blame_merge : blame -> blame -> blame =
   SiteMap.merge merge_event_opts
 
-(* combines the blame from two sources, associating
+(** combines the blame from two sources, associating
    the first with the branch `br` being taken true,
    and the second with the branch `br` being taken false,
    prevents needlessly expanding terms *)
 let blame_merge_across_branch br : blame -> blame -> blame =
   SiteMap.merge (merge_event_opts_across_branch br)
 
-(* checks whether this blame object contains any phantom return
+(** checks whether this blame object contains any phantom return
    - these should never be read or returned *)
 let blames_phantom_ret b =
   let check site _ prev =
@@ -250,13 +253,13 @@ let blames_phantom_ret b =
   SiteMap.fold check b false
 
 
-(* for every site blamed, conjuct its event with the passed
+(** for every site blamed, conjuct its event with the passed
    atomic external event `aee` - yielding a new new blame
    conditioned on that event. This is used only for function calls *)
 let blame_external_conj aee : blame -> blame =
   SiteMap.map (event_external_conj aee)
 
-(* conjucts the event `e` into the event associated with
+(** conjucts the event `e` into the event associated with
    every site of `b`.
    Precondition: e contains no external events
 *)
@@ -267,7 +270,7 @@ let blame_event_conj b e : blame =
 
 module LocalMap = Map(struct type t = local end)
 
-(* this is our typing context! associating blame with local variables *)
+(** this is our typing context! associating blame with local variables *)
 type context = blame LocalMap.t
 
 let context_lookup_ret (Ret(_, s)) = LocalMap.find (Local s)
@@ -321,7 +324,7 @@ end
 
 let context_empty : context = LocalMap.empty
 
-(* looks up the blame of variable x in context c if present
+(** looks up the blame of variable x in context c if present
    and ensures it doesn't blame a phantom return *)
 let context_lookup x c : blame option =
   match LocalMap.find_opt x c with
@@ -330,7 +333,7 @@ let context_lookup x c : blame option =
       raise (PhantomRetLookedUpByLocal x) else
       Some b
 
-(* returns a new context with local var x bound to blame b
+(** returns a new context with local var x bound to blame b
    in c *)
 let context_assign : local -> blame -> context -> context = LocalMap.add
 
@@ -361,7 +364,7 @@ let context_merge_across_branches br : context -> context -> context =
     double_option_map (blame_merge_across_branch br) in
   LocalMap.merge merge_func
 
-(* maps variables to events corresponding to the event under
+(** maps variables to events corresponding to the event under
    which that variable is "touched" i.e. assigned to.
    There should be NO EXTERNAL EVENTS included in the values of
    this mapping.
@@ -372,10 +375,10 @@ let touch_set_merge = LocalMap.merge merge_event_opts
 let touch_set_merge_across_branch br =
   LocalMap.merge (merge_touch_event_opts_across_branch br)
 
-(* computes the touch set for an expression *)
+(** computes the touch set for an expression *)
 let rec compute_touch_set (e : expr) =
   match e with
-  | Cond (_, e_t, e_f, b) -> 
+  | Cond (_, e_t, e_f, b, _, _) -> 
     LocalMap.merge (merge_event_opts_across_branch b)
       (compute_touch_set e_t) (compute_touch_set e_f)
   | Assign (x, _) -> LocalMap.singleton x event_one
@@ -387,7 +390,7 @@ let rec compute_touch_set (e : expr) =
       (compute_touch_set e1) (compute_touch_set e2)
   | _ -> LocalMap.empty
 
-(* returns a new context in which every variable from a passed
+(** returns a new context in which every variable from a passed
    touch set `ts` is associated with a certain blame, conjuncted
    site-wise with the event determined by the touch set.
    This reflects part of the semantics of branch unification.
@@ -398,7 +401,7 @@ let assoc_touch_set_with_blame ts b : context =
   in
   LocalMap.fold acc ts context_empty
 
-(* this context merge fully captures the semantics of conditionals:
+(** this context merge fully captures the semantics of conditionals:
    each branch's context (`c_t`, `c_f`) is first conjuncted with
    the touch set for that branch's expression (`e_t`, `e_f`),
    associated with the blame for the branching guard (`b_br`), and

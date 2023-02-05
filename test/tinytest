@@ -10,5 +10,6 @@ def f(x) -> y {
         }
     } else {
         y = 2
-    }
+    };
+    return y
 }

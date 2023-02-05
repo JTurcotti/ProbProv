@@ -143,10 +143,10 @@ let typecheck_aexp_single prog ctxt aexp : blame option =
 exception BadMultiAssign of int * int
 let rec typecheck_expr prog expr ctxt: context option =
   match expr with
-  | Skip ->
+  | Skip | Return _ ->
     (* noop *)
     Some ctxt
-  | Cond (a, e1, e2, branch) ->
+  | Cond (a, e1, e2, branch, _, _) ->
     (* a conditional checks each branch separately,
        along with the guarding aexp `a`,
        then combines them using the logic from

@@ -47,7 +47,8 @@ let rec aexp_repr aexp =
   | FApp (f, a_list, l, c) ->
     (Printf.sprintf "%s%s%s(%s)"
        (func_to_string f) (call_to_string c) (label_to_string l)
-       (list_to_string aexp_repr a_list))
+       (aexp_reprs a_list))
+and aexp_reprs alist = list_to_string aexp_repr alist
     
 let program_string (p : program) =
   let rec ntabs tabs =
@@ -61,7 +62,7 @@ let program_string (p : program) =
        | Skip ->
          true,
          "skip"
-       | Cond (a, e_t, e_f, b) ->
+       | Cond (a, e_t, e_f, b, _, _) ->
          true,
          Printf.sprintf "if%s [%s] then {\n%s\n%s} else {\n%s\n%s}"
            (branch_to_string b) (aexp_repr a)
@@ -84,7 +85,11 @@ let program_string (p : program) =
            (local_to_string v) (aexp_repr a)
        | AExp a ->
          true,
-         aexp_repr a)
+         aexp_repr a
+       | Return alist ->
+         true,
+         Printf.sprintf "return %s" (aexp_reprs alist)
+      )
   in
   let fdecl_repr fdecl =
     Printf.sprintf "def %s:\n%s"

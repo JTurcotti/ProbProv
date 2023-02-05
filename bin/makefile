@@ -25,8 +25,9 @@ lexer.ml: lexer.mll parser.ml
 	ocamllex lexer.mll
 
 clean:
-	rm *.cmo
-	rm *.cmi
-	rm parser.ml
-	rm lexer.ml
+	rm *.cmo || true
+	rm *.cmi || true
+	rm *.cmt || true
+	rm parser.ml || true
+	rm lexer.ml || true
 

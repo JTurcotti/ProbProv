@@ -1,11 +1,11 @@
 open Expr
-open Typecheck
 open Util
 
 type local_set = LocalSet.t
 type label_set = LabelSet.t
 
 exception InterferencePathFailure of string
+exception ProgrammerLogicError of string
 
 let debug_output = ref false
 let noop_formatter = Format.make_formatter
@@ -20,8 +20,16 @@ let debug_formatter _ = if !debug_output then
    listed and the direction the branch took noted
 *)
 type trace_entry =
-  | AssignEntry of local * aexp * local_set
-  | BranchEntry of aexp * local_set * branch * bool
+  | AssignEntry of local (* var assigned to *)
+                   * aexp (* what expr is assigned *)
+                   * local_set (* set of vars that aexp depends on *)
+  | BranchEntry of aexp (* aexp branched on *)
+                   * local_set (* set of vars that aexp depends on *)
+                   * branch (* branch label *)
+                   * bool (* how the branch is taken in this trace *)
+  | ReturnEntry of aexp list (* list of aexps returned *)
+                   * local_set list (* list of var dependencies for those aexps *)
+  
   | Skip
 
 let format_trace_entry ff = function
@@ -29,6 +37,8 @@ let format_trace_entry ff = function
     Format.fprintf ff "[%s = %s] " s (Expr_repr.aexp_repr a)
   | BranchEntry(a, _, _, dir) ->
     Format.fprintf ff "[if %s:%b] " (Expr_repr.aexp_repr a) dir
+  | ReturnEntry(alist, _) ->
+    Format.fprintf ff "[ret %s] " (Expr_repr.aexp_reprs alist)
   | Skip ->
     Format.fprintf ff "[Skip]"
 
@@ -105,37 +115,43 @@ let rec trace_labels (t : trace) : label_set =
   | [] -> LabelSet.empty
   | Skip :: t' -> trace_labels t'
   | AssignEntry(_, a, _) :: t'
-  | BranchEntry(a, _, _, _) :: t'-> LabelSet.union
-                                      (aexpr_labels a)
-                                      (trace_labels t')
+  | BranchEntry(a, _, _, _) :: t'->
+    LabelSet.union
+      (aexpr_labels a)
+      (trace_labels t')
+  | [ReturnEntry(alist, _)] ->
+    List.fold_right (compose aexpr_labels LabelSet.union) alist LabelSet.empty
+  | ReturnEntry _ :: _ ->
+    raise (ProgrammerLogicError "ReturnEntry should terminate trace")
 
-module OptLabelMap = Map(struct type t = label option end)
 
-let format_opt_label ff = function
+module OptEntryMap = Map(struct type t = trace_entry option end)
+
+let format_opt_entry ff = function
   | None -> Format.fprintf ff "none"
-  | Some (Label i) -> Format.fprintf ff "L%d" i
+  | Some entry -> format_trace_entry ff entry
 
 let format_partition =
-  OptLabelMap.lift_format format_opt_label format_subtrace_set ",\n\t" "0"
+  OptEntryMap.lift_format format_opt_entry format_subtrace_set ",\n\t" "0"
 
 (**
    Split a subtrace_set into partitions based on the label of the
    first entry in the subtrace
 *)
-let partition_by_head (st_set : subtrace_set) : subtrace_set OptLabelMap.t =
+let partition_by_head (st_set : subtrace_set) : subtrace_set OptEntryMap.t =
   SubtraceSet.fold (fun st partition_map ->
-      let label = if List.length st.filter = 0 then None else
+      let head_entry = if List.length st.filter = 0 then None else
           match subtrace_nth st 0 with
-          | AssignEntry (_, a, _) -> Some (aexpr_label a)
-          | _ ->
-            raise (InterferencePathFailure "expected only assignments in subtrace")
+          | BranchEntry _ ->
+            raise (InterferencePathFailure "expected no branches in subtrace ")
+          | entry -> Some entry
       in
-      OptLabelMap.update label
+      OptEntryMap.update head_entry
         (function
           | None -> Some (SubtraceSet.singleton st)
           | Some st_set -> Some (SubtraceSet.add st st_set)
         ) partition_map
-    ) st_set OptLabelMap.empty
+    ) st_set OptEntryMap.empty
 
 (** given a subtrace, compute_leading_branches returns the set of branches
     that occur in the trace, mapped to their position in the trace
@@ -144,9 +160,9 @@ let compute_branches (t : trace) : int BranchMap.t =
   let rec acc n =
     if n = List.length t then BranchMap.empty else
       match List.nth t n with
-      | AssignEntry(_, _, _) | Skip -> (acc (n + 1))
       | BranchEntry(_, _, b, _) ->
         BranchMap.add b n (acc (n + 1))
+      | _ -> acc (n + 1)
   in
   acc 0
     
@@ -169,16 +185,14 @@ let last_common_branch trace1 trace2 : branch =
       intersected (BranchMap.choose intersected) in
   b
 
-exception ProgrammerLogicError of string
-
 (** looks up the passed branch in the passed trace, returning its position and
     direction *)
 let find_branch_in_trace_opt b tr =
   let rec acc n tr = 
     match tr with
-    | AssignEntry(_, _, _) :: tr | Skip :: tr -> acc (n+1) tr
     | BranchEntry(_, deps, b', dir) :: tr ->
       if b = b' then Some (n, deps, dir) else acc (n+1) tr
+    | _ :: tr -> acc (n + 1) tr
     | [] -> None
   in
   acc 0 tr
@@ -240,7 +254,7 @@ let filter_explicit_traces (st_set : subtrace_set) : trace_set =
 let rec compute_trace_set : expr -> trace_set =
   function
   | Skip | Assert _ | AExp _ | FAssign (_, _) -> TraceSet.singleton [Skip]
-  | Cond (c, et, ef, b) ->
+  | Cond (c, et, ef, b, _, _) ->
     let branch_entry dir =
       BranchEntry(c, aexp_locals c, b, dir) in
     let ts_t = compute_trace_set et in
@@ -254,6 +268,14 @@ let rec compute_trace_set : expr -> trace_set =
     TraceSet.prod List.append ts1 ts2
   | Assign (l, a) ->
     TraceSet.singleton ([AssignEntry(l, a, aexp_locals a)])
+  | Return alist ->
+    TraceSet.singleton ([ReturnEntry(alist, List.map aexp_locals alist)])
+
+(** we can search for either subtraces that flow to a return,
+    or to a set of local variables - this type indicates that choice *)
+type subtrace_type =
+  | ReturnTrace of int
+  | LocalTrace of local_set
 
 (**
    compute_subtrace_set maps each trace in t_set to a subtrace
@@ -267,14 +289,17 @@ let rec compute_trace_set : expr -> trace_set =
 
    Step 1/3 in refine_trace_set
 *)
-let compute_subtrace_set (src : local) (tgts: local_set)
+let compute_subtrace_set (src : local) (tgt: subtrace_type)
     (ts : trace_set) : subtrace_set =
   Format.fprintf (debug_formatter ()) "\n<call compute_subtrace_set of: %a>\n"
       format_trace_set ts;
   let rec compute_subtrace_rec pos tr = (
-    match tr with
-    | [] -> [], tgts
-    | entry :: tr_tail ->
+    match tr, tgt with
+    | [], LocalTrace local_tgts ->
+      [], local_tgts
+    | [ReturnEntry (_, ret_locals)], ReturnTrace n ->
+      [pos], List.nth ret_locals n
+    | entry :: tr_tail, _ -> (
       let st_tail, new_tgts = compute_subtrace_rec (pos + 1) tr_tail in
       match entry with
       | AssignEntry(l, _, l_deps) ->
@@ -291,7 +316,10 @@ let compute_subtrace_set (src : local) (tgts: local_set)
       | BranchEntry(_, _, _, _) | Skip ->
         (* branches don't get included in subtraces *)
         st_tail, new_tgts
-  ) in
+      | ReturnEntry _ ->
+        raise (ProgrammerLogicError "return found in nonterminal position of trace"))
+    | _ -> raise (ProgrammerLogicError "invalid call to compute_subtrace_set"))
+  in
   let compute_subtrace tr =
     let st, new_tgts = compute_subtrace_rec 0 tr in
     SubtraceSet.singleton {
@@ -335,11 +363,11 @@ struct
 *)
 let rec compute_implicit_flows src (st_set: subtrace_set) : trace_set = 
   let partition = partition_by_head st_set in
-  match OptLabelMap.cardinal partition with
+  match OptEntryMap.cardinal partition with
   | 0 -> raise (ProgrammerLogicError "empty set of subtraces not expected")
   | 1 ->
     (* all subtraces begin the same way *)
-    (match OptLabelMap.choose partition with
+    (match OptEntryMap.choose partition with
      | None, _ ->
        (* there are no remaining flowing assignments so no implicit flows *)
        TraceSet.empty 
@@ -353,8 +381,8 @@ let rec compute_implicit_flows src (st_set: subtrace_set) : trace_set =
     )
   | _ -> ( (* subtraces begin in different ways - there are implicit flows ! *)
       let implicit_flows_here =
-        OptLabelMap.fold (fun k st_set1 ->
-            OptLabelMap.fold (fun _ st_set2 ->
+        OptEntryMap.fold (fun k st_set1 ->
+            OptEntryMap.fold (fun _ st_set2 ->
                 (* st_set1 and st_set2 are sets of subtraces that yield
                    different explicit values, so figure out if this
                    yields any implicit flows *)
@@ -368,13 +396,13 @@ let rec compute_implicit_flows src (st_set: subtrace_set) : trace_set =
                           )
                       ) st_set2
                   ) st_set1
-              ) (OptLabelMap.remove k partition)
+              ) (OptEntryMap.remove k partition)
           ) partition TraceSet.empty in
 
       (* we now recursively join all explicit flows in subtrees of the
          prefix tree of explicitly flowing assignments to the implicit
          flows computed here *)
-      OptLabelMap.fold (fun _ st_set ->
+      OptEntryMap.fold (fun _ st_set ->
           TraceSet.union (compute_implicit_flows src st_set)
         ) partition
         implicit_flows_here
@@ -401,7 +429,8 @@ and compute_trace_v_trace_implicit_flows src st_set trace1 trace2 : trace_set =
      up to this branch *)
   let prefix, _ = split_trace_pos_list (extract_trace_pos_list lcb st_set) in
   (* refine that set to just those that flow to the dependencies of the branch *)
-  let refined_prefix = refine_trace_set src deps prefix in
+  let refined_prefix =
+    refine_trace_set src (LocalTrace deps) prefix in
   (* return all traces that lead up to the lcb, flow to the value it branches on,
      and then proceed as trace1 or trace2 do *)
   TraceSet.union
@@ -412,11 +441,16 @@ and compute_trace_v_trace_implicit_flows src st_set trace1 trace2 : trace_set =
    refine_trace_set takes a set of traces and returns only those corresponding
    to interference paths
 *)
-and refine_trace_set (src : local) (tgts : local_set) (ts : trace_set) : trace_set =
-  let subtraces = compute_subtrace_set src tgts ts in
+and refine_trace_set (src : local) (tgt : subtrace_type)
+    (ts : trace_set) : trace_set =
+  let subtraces = compute_subtrace_set src tgt ts in
   let implicit_flows = compute_implicit_flows src subtraces in
   let explicit_flows = compute_explicit_flows subtraces in
   TraceSet.union implicit_flows explicit_flows
 
-let compute_interference_flows (e : expr) (src: local) (tgt: local) : trace_set =
-  refine_trace_set src (LocalSet.singleton tgt) (compute_trace_set e)
+(**
+   compute the interference flows from the passed src to the indicated
+   return number for a function with body e
+*)
+let compute_interference_flows (e : expr) (src: local) (which_ret: int) : trace_set =
+  refine_trace_set src (ReturnTrace which_ret) (compute_trace_set e)

@@ -1,5 +1,3 @@
-open Util
-
 let program = Io.program
 let () = print_endline (Expr_repr.program_string program)
 let typechecked_prog = (Typecheck.typecheck_program program)
@@ -9,8 +7,8 @@ include Analyze.ProgramAnalyzer (struct
   end)
 
 let _, (fdecl, _) = Expr.FuncMap.choose typechecked_prog.tfunc_tbl
-let src, tgt = match List.hd fdecl.params, List.hd fdecl.results with
-  | Arg(_, arg_str), Ret(_, ret_str) -> Expr.(Local(arg_str), Local(ret_str))
+let src, tgt = match List.hd fdecl.params with
+  | Arg(_, arg_str) -> Expr.(Local(arg_str)), 0
 
 open Interference_paths
 

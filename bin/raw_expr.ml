@@ -20,6 +20,7 @@ type raw_expr =
   | Raw_Seq of raw_expr * raw_expr
   | Raw_Assert of string * raw_aexp
   | Raw_AExp of raw_aexp
+  | Raw_Return of raw_aexp list
 
 type raw_fdecl = {
   raw_name: string;
