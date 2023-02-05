@@ -5,7 +5,7 @@ let program = Io.program
 let () = print_endline (Expr_repr.program_string program)
 let typechecked_prog = (Typecheck.typecheck_program program)
 let () = print_endline (Context_repr.typechecked_program_repr
-                         typechecked_prog)
+                         typechecked_prog.tfunc_tbl)
 
 include Analyze.ProgramAnalyzer (struct
     type t = Typecheck.typechecked_program

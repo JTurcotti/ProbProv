@@ -94,20 +94,20 @@ let context_repr_fdecl_out fdecl =
 
 let func_repr (Func s) = s
 
-open Typecheck
-
-let typechecked_program_repr tprogram = 
-  let result_repr (_, ret_blames) =
+let blame_list_repr blames = 
     Printf.sprintf "[\n%s\n]"
     (list_map_reduce id
       (Printf.sprintf "%s,\n%s") "" 
       (List.mapi (fun i blame ->
            Printf.sprintf "%d ↦ {\n%s}"
-             i (blame_repr blame)) ret_blames)) in
+             i (blame_repr blame)) blames)) 
+
+let typechecked_program_repr tfunc_tbl = 
+  let result_repr (_, ret_blames) = blame_list_repr ret_blames in
   map_repr
     FuncMap.is_empty FuncMap.choose FuncMap.remove FuncMap.fold
     "" func_repr result_repr "function %s: %s" "%s\n\n%s"
-    tprogram.tfunc_tbl
+    tfunc_tbl
     
 
 (* for testing use: *)
