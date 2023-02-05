@@ -72,12 +72,14 @@ exception BranchAlreadyPresentInEvent of branch
 (** internal_event_conj returns the internal event that occurs
     if `ie` occurs and branch `br` is taken `dir`.
     
-    Throws an exception of `ie`
-    already states how `b` must be taken*)
-let internal_event_conj (AIE (br, dir)) ie : internal_event =
-  let () = if BranchMap.mem br ie then
-      raise (BranchAlreadyPresentInEvent br) else () in
-  BranchMap.add br dir ie
+    If `ie` already states how `b` must be taken and it contradicts
+    the passed `dir`, no event is returned *)
+let internal_event_conj (AIE (br, dir)) ie : internal_event option =
+  match BranchMap.find_opt br ie with
+  | None -> Some (BranchMap.add br dir ie)
+  | Some dir' ->
+    if dir = dir' then Some ie else None
+
 (* end internal event utilities *)
 
 module IEMap = Map(struct type t = internal_event end)
@@ -116,8 +118,10 @@ let event_external_conj aee : event -> event =
    result occurs if any case of the original occurs followed
    by the passed internal event *)
 let event_internal_conj aie e : event =
-  let build_new_event ie =
-    (IEMap.add (internal_event_conj aie ie)) in
+  let build_new_event ie ext =
+    match internal_event_conj aie ie with
+    | Some ie' -> IEMap.add ie' ext
+    | None -> id in
   IEMap.fold build_new_event e event_zero
 
 exception BadPrecondition
@@ -144,6 +148,8 @@ let merge_event_opts _ =
 
 let event_branch_conj br dir e =
   event_internal_conj (AIE(br, dir)) e
+
+let branch_event br dir = event_branch_conj br dir event_one
 
 let merge_events_across_branch br _ e1 e2 =
   if e1 = e2 then

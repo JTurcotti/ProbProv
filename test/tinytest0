@@ -1,3 +1,9 @@
 def f(x) -> y {
     return x
 }
+
+def f_classic(x) -> y {
+    y = x
+    return y
+}
+

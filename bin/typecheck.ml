@@ -256,6 +256,24 @@ let merge_typecheck_results_across_branch br res1 res2 : typecheck_result =
              (Expr_repr.assertion_to_string a)
              (Expr_repr.branch_to_string br))
 
+let taint_with_pc pc blame : blame =
+  let rec accumulate_taint pc guard blame =
+    match pc with
+    | [] -> blame
+    | (br, dir, br_blame) :: pc_tail ->
+      let br_pos, br_neg = branch_event br dir, branch_event br (not dir) in
+      let new_guard = event_conj br_pos guard in
+      let implicit_event = event_disj new_guard br_neg in
+      let new_blame = blame_merge
+          (blame_event_conj blame br_pos)
+          (blame_event_conj br_blame implicit_event) in
+      accumulate_taint pc_tail new_guard new_blame in
+  accumulate_taint pc event_one blame
+
+(**
+   This is the main typechecking workhorse - performs typechecking of
+   expressions!
+*)
 let rec typecheck_expr prog flow_ctxt : expr -> typecheck_result =
   let typecheck_expr = typecheck_expr prog in
   let typecheck_nonterminal flow_ctxt expr action =
@@ -270,9 +288,11 @@ let rec typecheck_expr prog flow_ctxt : expr -> typecheck_result =
       match (typecheck_aexp a) with
       | [a_blame] ->
         (* unary expression, as expected, so perform assignment and continue *)
+        let tainted_blame = taint_with_pc flow_ctxt.pc a_blame in
         NonTerminal {flow_ctxt with
-                     local_blames = context_assign
-                         x a_blame flow_ctxt.local_blames}
+                     local_blames =
+                       context_assign
+                         x tainted_blame flow_ctxt.local_blames}
       | [] ->
         (* aexp typechecking failed *)
         Error (Format.sprintf
@@ -318,11 +338,12 @@ let rec typecheck_expr prog flow_ctxt : expr -> typecheck_result =
   | Return a_list -> (
       let a_blames = List.fold_right
           (compose typecheck_aexp List.append) a_list [] in
+      let tainted_blames = List.map (taint_with_pc flow_ctxt.pc) a_blames in
       let curr_ret_len, a_len =
         List.length flow_ctxt.output.ret_blames,
         List.length a_blames in
       if curr_ret_len = a_len then
-        Terminal (add_return_blame flow_ctxt.output a_blames)
+        Terminal (add_return_blame flow_ctxt.output tainted_blames)
       else
         Error (Format.sprintf
                  "'return %s' provided %d values but prior return provided %d"
