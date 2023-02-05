@@ -32,8 +32,9 @@ let print_flow flow color =
     Format.std_formatter
     !Io.IO.input_file
     color
-    typechecked_prog.label_tbl
+    typechecked_prog
     (trace_labels flow)
+    (List.hd fdecl.params) (List.hd fdecl.results)
 
 let () =
   Format.fprintf Format.std_formatter "Interference flows:\n";

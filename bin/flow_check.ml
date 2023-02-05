@@ -28,13 +28,14 @@ let trace_matches_event trace event =
       prev || (trace_matches_internal_event trace ievent)
     ) event false
 
-let print_flow flow color =
+let print_flow flow arg ret color =
   Output.SimplePrettyPrint.format_program
     Format.std_formatter
     !Io.IO.input_file
     color
-    typechecked_prog.label_tbl
+    typechecked_prog
     (trace_labels flow)
+    arg ret
 
 let false_pos, false_neg, true_pos, true_neg = ref 0, ref 0, ref 0, ref 0
 
@@ -59,12 +60,12 @@ let check_func _ (fdecl, blame_list) =
           true_pos := !true_pos + 1
         ) else (
           false_neg := !false_neg + 1;
-          print_flow flow int_color)
+          print_flow flow param result int_color)
       ) interference_flows in
     let () = TraceSet.iter (fun flow ->
         if (trace_matches_event flow param_result_flow_event) then (
           false_pos := !false_pos + 1;
-          print_flow flow nonint_color
+          print_flow flow param result nonint_color
         ) else (
           true_neg := !true_neg + 1)
       ) noninterference_flows in

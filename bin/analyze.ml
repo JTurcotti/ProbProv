@@ -752,11 +752,12 @@ struct
     module SimplePrettyPrint =
     struct
       let format_program ff input_file color
-          (label_tbl : Expr.label Expr.IntMap.t)
-          (label_set : Expr.LabelSet.t) =
+          (tprog : Typecheck.typechecked_program)
+          (label_set : Expr.LabelSet.t)
+          (arg : Expr.arg) (ret : Expr.ret) =
 
         let i_in_label_tbl i =
-          match Expr.IntMap.find_opt i label_tbl with
+          match Expr.IntMap.find_opt i tprog.label_tbl with
           | None -> false
           | Some l -> Expr.LabelSet.mem l label_set in
 
@@ -786,9 +787,16 @@ struct
               if labelled then Expr.IntSet.union chars else id)
             !labelled_lines Expr.IntSet.empty in
         let i_in_labelled_line i = Expr.IntSet.mem i line_labelled_chars in
+        let i_is_arg_or_ret i =
+          match Expr.IntMap.find_opt i tprog.arg_tbl,
+                Expr.IntMap.find_opt i tprog.ret_tbl with
+          | Some (_, arg'), Some (_, ret') -> arg = arg' || ret = ret'
+          | Some (_, arg'), _ -> arg = arg'
+          | _, Some (_, ret') -> ret = ret'
+          | _ -> false in
 
         let format_char i c =
-          if i_in_label_tbl i then
+          if i_in_label_tbl i || i_is_arg_or_ret i then
             format_color_char ff color c else (
             if i_in_labelled_line i then
               format_weak_color_char ff color 0.3 c
