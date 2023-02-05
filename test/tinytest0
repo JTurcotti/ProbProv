@@ -3,7 +3,7 @@ def f(x) -> y {
 }
 
 def f_classic(x) -> y {
-    y = x
+    y = x;
     return y
 }
 
