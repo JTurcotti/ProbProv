@@ -19,7 +19,7 @@ def f(a, b, x, y) -> t {
     return 0
 }
 
-def f(a, b, x, y) -> t {
+def f_classic(a, b, x, y) -> t {
     t = 0;
     if a {
         if b {
