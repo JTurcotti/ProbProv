@@ -85,11 +85,21 @@ let internal_event_conj (AIE (br, dir)) ie : internal_event option =
 let internal_events_disj_reduce ie1 ie2 : internal_event option =
   let diff_map = BranchMap.merge (fun _ b1 b2 ->
       match b1, b2 with
-      | Some b1, Some b2 -> if b1 = b2 then None else Some true
-      | _ -> Some false) ie1 ie2 in
+      | Some b1, Some b2 -> if b1 = b2 then None else Some 0b11
+      | Some _, None -> Some 0b10
+      | None, Some _ -> Some 0b01
+      | _ -> None) ie1 ie2 in
+  if BranchMap.for_all (fun _ presence -> presence = 0b10) diff_map then
+    (* first event implies second event *)
+    Some ie2
+  else
+  if BranchMap.for_all (fun _ presence -> presence = 0b01) diff_map then
+    (* second event implies first event *)
+    Some ie1
+  else
   if BranchMap.cardinal diff_map <> 1 then None else
-    let diff_branch, in_both = BranchMap.choose diff_map in
-    if in_both then Some (BranchMap.remove diff_branch ie1) else
+    let diff_branch, presence = BranchMap.choose diff_map in
+    if presence = 0b11 then Some (BranchMap.remove diff_branch ie1) else
       None
 
 (* end internal event utilities *)
