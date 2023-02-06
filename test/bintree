@@ -1,36 +1,35 @@
 def new_node(left, val, right) -> node {
-    node = left + val + right
+    return left + val + right
 }
 
 def contains_val(tree, val) -> ret {
     if tree.val == val {
-       ret = true
+        return true
     } else {
-       if tree.val > val {
-       	  ret = tree.left != null && contains_val(tree.left, val)       	  	 
-       } else {
-          ret = tree.right != null && contains_val(tree.right, val)
-       }
-   }
+        if tree.val > val {
+            return tree.left != null && contains_val(tree.left, val)       	  	       } else {
+            return tree.right != null && contains_val(tree.right, val)
+        }
+    }
 }
 
 def insert_val(tree, val) -> new_tree {
     if contains_val(tree, val) {
-       new_tree = tree
+        return tree
     } else {
-      if tree.val > val {
-      	 if tree.left == null {
-	    new_tree = new_node(new_node(null, val, null), tree.val, tree.right)
-	 } else {
-	    new_tree = new_node(insert_val(tree.left, val), tree.val, tree.right)
-	 }
-      } else {
-      	if tree.right == null {
-	    new_tree = new_node(tree.left, tree.val, new_node(null, val, null))
-	 } else {
-	    new_tree = new_node(tree.left, tree.val, insert_val(tree.left, val))
-	 }
-      }
+        if tree.val > val {
+            if tree.left == null {
+	        return new_node(new_node(null, val, null), tree.val, tree.right)
+	    } else {
+	        return new_node(insert_val(tree.left, val), tree.val, tree.right)
+            }
+        } else {
+      	    if tree.right == null {
+	        return new_node(tree.left, tree.val, new_node(null, val, null))
+	    } else {
+	        return new_node(tree.left, tree.val, insert_val(tree.left, val))
+	    }
+        }
     }
 }
           

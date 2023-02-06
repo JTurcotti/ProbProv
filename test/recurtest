@@ -1,13 +1,18 @@
-def f() -> (x, y) {
-    if 0 {
-        x = 0;
-        y = 0
+def inc(x) -> y {
+    return x + 1
+}
+
+def f(a, b, c, d) -> (x, y) {
+    if a {
+        x = b;
+        y = c
     } else {
-        x, y = f()
+        x, y = f(inc(a), inc(b), inc(c), inc(d))
     };
-    if 0 {
+    if d {
         t = x;
         x = y;
         y = t
-    } else { skip }
+    };
+    return x, y
 }
