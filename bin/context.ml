@@ -20,7 +20,8 @@ module AEEConjunctiveSet = Set(struct type t = atomic_external_event end)
 (* aee conjunction utilities *)
 
 let aee_one = AEEConjunctiveSet.empty
-let aee_conj = AEEConjunctiveSet.add
+let aee_add = AEEConjunctiveSet.add
+let aee_conj = AEEConjunctiveSet.union
 
 type aee_conjunction = AEEConjunctiveSet.t
 
@@ -29,7 +30,7 @@ type aee_conjunction = AEEConjunctiveSet.t
 module AEEDNFSet = Set(struct type t = aee_conjunction end)
 
 (** an external event is a combination of atomic
-   external events in DNF *)
+    external events in DNF *)
 type external_event = AEEDNFSet.t
 
 (* external event utilities *)
@@ -44,10 +45,22 @@ let external_event_zero : external_event =
 
 (** conjunct a new atomic external event onto this external event *)
 let external_event_conj aee ee : external_event =
-  AEEDNFSet.map (aee_conj aee) ee
+  AEEDNFSet.map (aee_add aee) ee
 
 (** disjunt together two external events *)
-let external_event_disj = AEEDNFSet.union
+let rec external_event_disj ee1 ee2 =
+  match AEEDNFSet.choose_opt ee1 with
+  | None -> ee2
+  | Some conj ->
+    let ee1 = AEEDNFSet.remove conj ee1 in
+    if AEEDNFSet.exists (fun conj2 -> aee_conj conj conj2 = conj) ee2 then
+      (* conj subsumed by a clause already in ee2 *)
+      external_event_disj ee1 ee2
+    else
+      external_event_disj ee1
+        (AEEDNFSet.add conj
+           (AEEDNFSet.filter (fun conj2 -> aee_conj conj conj2 <> conj2)
+              ee2))
 
 (* end external event utilities *)
 
@@ -55,21 +68,21 @@ let external_event_disj = AEEDNFSet.union
 type atomic_internal_event = AIE of branch * bool
 
 (** an internal event is statement about branches being taken.
-   Not present means "don't care"
-   mapped to true means must be taken true
-   mapped to false means must be taken false
+    Not present means "don't care"
+    mapped to true means must be taken true
+    mapped to false means must be taken false
 *) 
 type internal_event = bool BranchMap.t
 
 (* internal event utilities *)
 
 (** the internal event that "always occurs"
-   -i.e. no branches have to be taken for it to occur *)
+    -i.e. no branches have to be taken for it to occur *)
 let internal_event_one : internal_event = BranchMap.empty
 
 (** internal_event_conj returns the internal event that occurs
     if `ie` occurs and branch `br` is taken `dir`.
-    
+
     If `ie` already states how `b` must be taken and it contradicts
     the passed `dir`, no event is returned *)
 let internal_event_conj (AIE (br, dir)) ie : internal_event option =
@@ -82,24 +95,29 @@ let internal_event_conj (AIE (br, dir)) ie : internal_event option =
     only by a single branch present in both, return the representation
     of that disjunction as a single internal event lacking that single
     branch *)
-let internal_events_disj_reduce ie1 ie2 : internal_event option =
+let internal_events_disj_reduce ie1 ee1 ie2 ee2
+  : (internal_event * external_event) option =
   let diff_map = BranchMap.merge (fun _ b1 b2 ->
       match b1, b2 with
       | Some b1, Some b2 -> if b1 = b2 then None else Some 0b11
       | Some _, None -> Some 0b10
       | None, Some _ -> Some 0b01
       | _ -> None) ie1 ie2 in
-  if BranchMap.for_all (fun _ presence -> presence = 0b10) diff_map then
+  if BranchMap.for_all (fun _ presence -> presence = 0b10) diff_map &&
+     external_event_disj ee1 ee2 = ee2
+  then
     (* first event implies second event *)
-    Some ie2
+    Some (ie2, ee2)
   else
-  if BranchMap.for_all (fun _ presence -> presence = 0b01) diff_map then
+  if BranchMap.for_all (fun _ presence -> presence = 0b01) diff_map &&
+     external_event_disj ee1 ee2 = ee1
+  then
     (* second event implies first event *)
-    Some ie1
+    Some (ie1, ee1)
   else
-  if BranchMap.cardinal diff_map <> 1 then None else
+  if ee1 <> ee2 || BranchMap.cardinal diff_map <> 1 then None else
     let diff_branch, presence = BranchMap.choose diff_map in
-    if presence = 0b11 then Some (BranchMap.remove diff_branch ie1) else
+    if presence = 0b11 then Some (BranchMap.remove diff_branch ie1, ee1) else
       None
 
 (* end internal event utilities *)
@@ -107,12 +125,12 @@ let internal_events_disj_reduce ie1 ie2 : internal_event option =
 module IEMap = Map(struct type t = internal_event end)
 
 (** an event is a set of sequences of branches (internal events),
-   each associated with an external event.
+    each associated with an external event.
 
-   The interpretation is that an event "happens" iff, for any KV pair
-   (internal, external) present, the internal event corresponds to
-   a sequence of branches actually taken, and the external event occurs
-   with appropriate probability independent of the internal event *)
+    The interpretation is that an event "happens" iff, for any KV pair
+    (internal, external) present, the internal event corresponds to
+    a sequence of branches actually taken, and the external event occurs
+    with appropriate probability independent of the internal event *)
 type event = external_event IEMap.t
 
 (* event utilities *)
@@ -125,37 +143,39 @@ let event_one : event =
   IEMap.singleton internal_event_one external_event_one
 
 (* TODO: replace this equality checking of maps and sets with calls to
-compare functions - I have a bad feeling about this*)
-   
+   compare functions - I have a bad feeling about this*)
+
 let events_find_reduction event1 event2 =
   IEMap.fold (fun ie1 ee1 ->
       IEMap.fold (fun ie2 ee2 opt_out ->
           match opt_out with
           | Some v -> Some v
           | None ->
-            if ee1 <> ee2 then None else
-              match internal_events_disj_reduce ie1 ie2 with
-              | None -> None
-              | Some ie -> Some (ie1, ie2, ie, ee1)
+            match internal_events_disj_reduce ie1 ee1 ie2 ee2 with
+            | None -> None
+            | Some (ie, ee) -> Some (ie1, ie2, ie, ee)
         ) event2) event1 None
 
 (** combines two events - result occurs if either of the sources do *)
 let rec event_disj : event -> event -> event =
   fun e1 e2 ->
-  match events_find_reduction e1 e2 with
-  | None -> IEMap.merge (fun _ -> double_option_map external_event_disj) e1 e2
-  | Some (ie1, ie2, ie, ee) ->
-    IEMap.add ie ee
-      (event_disj (IEMap.remove ie1 e1) (IEMap.remove ie2 e2))
+  match IEMap.choose_opt e1 with
+  | None -> e2
+  | Some (ie, ee) ->
+    let e1' = IEMap.remove ie e1 in
+    match events_find_reduction (IEMap.singleton ie ee) e2 with
+    | None -> event_disj e1' (IEMap.add ie ee e2)
+    | Some (_, ie2, ie, ee) ->
+      event_disj e1' (event_disj (IEMap.singleton ie ee) (IEMap.remove ie2 e2))
 
 (** conjuncts an event with a new atomic external event -
-   result occurs if original occurs and atomic external event occurs *)
+    result occurs if original occurs and atomic external event occurs *)
 let event_external_conj aee : event -> event =
   IEMap.map (external_event_conj aee)
 
 (** conjuncts an event with a new atomic internal event -
-   result occurs if any case of the original occurs followed
-   by the passed internal event *)
+    result occurs if any case of the original occurs followed
+    by the passed internal event *)
 let event_internal_conj aie e : event =
   let build_new_event ie ext =
     match internal_event_conj aie ie with
@@ -180,8 +200,8 @@ let event_conj e1 e2 : event =
 
 
 (** performs a merge of event options, doing either the trivial thing
-   or applying event_disj if two non-empties are passed
-   meant to be used in Map.Make().Merge *)
+    or applying event_disj if two non-empties are passed
+    meant to be used in Map.Make().Merge *)
 let merge_event_opts _ =
   double_option_map event_disj
 
@@ -203,9 +223,9 @@ let merge_events_across_branch br _ e1 e2 =
        (event_branch_conj br false e2))
 
 (** performs a merge of event options, first applying
-   internal event conjunctions in accordance with the passed branch
-   meant to be used in Map.Make().Merge (hence the ignored arg for
-   the key being merged at) *)
+    internal event conjunctions in accordance with the passed branch
+    meant to be used in Map.Make().Merge (hence the ignored arg for
+    the key being merged at) *)
 let merge_event_opts_across_branch br _ op_e1 op_e2 =
   match (op_e1, op_e2) with
   | None, None -> None
@@ -266,9 +286,9 @@ let is_phantom_ret s =
 module SiteMap = Map(struct type t = site end)
 
 (** a blame provides all the information one could care to know about
-   provenance of a value - initially it is a very complex object but
-   eventually it will just map LabelSites and ArgSites to [0, 1] numbers
-   interpretation is that this blame object indicates a dependence on each site iff site is mapped to some event and that event occurs
+    provenance of a value - initially it is a very complex object but
+    eventually it will just map LabelSites and ArgSites to [0, 1] numbers
+    interpretation is that this blame object indicates a dependence on each site iff site is mapped to some event and that event occurs
 *)
 type blame = event SiteMap.t
 
@@ -281,19 +301,19 @@ let blame_zero : blame = SiteMap.empty
 let blame_one a : blame = SiteMap.singleton a event_one
 
 (** combine the blame from two sources -
-   out blames a site iff either of the sources do *)
+    out blames a site iff either of the sources do *)
 let blame_merge : blame -> blame -> blame =
   SiteMap.merge merge_event_opts
 
 (** combines the blame from two sources, associating
-   the first with the branch `br` being taken true,
-   and the second with the branch `br` being taken false,
-   prevents needlessly expanding terms *)
+    the first with the branch `br` being taken true,
+    and the second with the branch `br` being taken false,
+    prevents needlessly expanding terms *)
 let blame_merge_across_branch br : blame -> blame -> blame =
   SiteMap.merge (merge_event_opts_across_branch br)
 
 (** checks whether this blame object contains any phantom return
-   - these should never be read or returned *)
+    - these should never be read or returned *)
 let blames_phantom_ret b =
   let check site _ prev =
     prev || (is_phantom_ret site)
@@ -302,14 +322,14 @@ let blames_phantom_ret b =
 
 
 (** for every site blamed, conjuct its event with the passed
-   atomic external event `aee` - yielding a new new blame
-   conditioned on that event. This is used only for function calls *)
+    atomic external event `aee` - yielding a new new blame
+    conditioned on that event. This is used only for function calls *)
 let blame_external_conj aee : blame -> blame =
   SiteMap.map (event_external_conj aee)
 
 (** conjucts the event `e` into the event associated with
-   every site of `b`.
-   Precondition: e contains no external events
+    every site of `b`.
+    Precondition: e contains no external events
 *)
 let blame_event_conj b e : blame =
   SiteMap.map (event_conj e) b
@@ -373,7 +393,7 @@ end
 let context_empty : context = LocalMap.empty
 
 (** looks up the blame of variable x in context c if present
-   and ensures it doesn't blame a phantom return *)
+    and ensures it doesn't blame a phantom return *)
 let context_lookup x c : blame option =
   match LocalMap.find_opt x c with
   | None -> None
@@ -382,7 +402,7 @@ let context_lookup x c : blame option =
       Some b
 
 (** returns a new context with local var x bound to blame b
-   in c *)
+    in c *)
 let context_assign : local -> blame -> context -> context = LocalMap.add
 
 let context_blames_phantom_ret c =

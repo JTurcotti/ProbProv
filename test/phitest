@@ -5,13 +5,14 @@ def foo(a, b, c) -> (x, y) {
     } else {
         x, z = bar(a, a);
         z, y = bar(b, b)
-    }
+    };
+    return x, y
 }
 
 def bar(a, b) -> (x, y) {
     g = gap();
     if g > 20 {
-        x, y = baz(g)
+        return baz(g)
     } else {
         if a > b {
             z1, z2 = foo(a, b, a + b);
@@ -21,15 +22,15 @@ def bar(a, b) -> (x, y) {
             x = a;
             y = 0
         }
-    }
+    };
+    return x, y
 }
 
 def gap() -> (x) {
-    x = 0
+    return 0
 }
 
 def baz(a) -> (x, y) {
-    x = a * 200;
-    y = a + 1000
+    return a * 200, a + 1000
 }
     
