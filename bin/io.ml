@@ -7,6 +7,8 @@ struct
   let simple_parse = ref false
   let restrict_to_func = ref ""
   let target_assertions = ref false
+  let independent_mode = ref false
+  let compare_mode = ref false
 
   let anon_fun _ =
     raise (Arg.Bad "run takes no anonymous arguments")
@@ -17,6 +19,8 @@ struct
      ("-i", Arg.Set_string input_file, "Set input file name");
      ("-r", Arg.Set_string restrict_to_func, "Restrict to a single function's Ω");
      ("-o", Arg.Set_string output_file, "Set output file name");
+     ("-ind", Arg.Set independent_mode, "Set to independent mode");
+     ("-comp", Arg.Set compare_mode, "Set to compare mode");
      (* TODO: implement -a *)
      ("-a", Arg.Set target_assertions, "Output blame for assertions instead of function results")]
 end

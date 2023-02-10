@@ -47,11 +47,12 @@ def build_room(prior_room, request) -> room {
             budget_remaining = budget_remaining - cost_of(next_hall_built) 
                 
         }
-    }
+    };
+    return room
 }
 
-def is_valid(x) -> y { y = x }
+def is_valid(x) -> y { return x }
 
-def cost_of(x) -> y { y = x }
+def cost_of(x) -> y { return x }
 
 

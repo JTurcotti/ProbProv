@@ -1,6 +1,8 @@
 open Util
 open Event_util
 
+let independent_mode = ref false
+
 module type SetLike =
 sig
   type elt
@@ -284,6 +286,9 @@ struct
   let lower_to_set : Dep.t -> S.t = fun de ->
     let () = Dep.assert_dep de in
     Dep.Set.fold (fun d -> S.add d.el) de S.empty
+
+  let lower_to_set_unsafe : Dep.t -> S.t = fun de ->
+    Dep.Set.fold (fun d -> S.add d.el) de S.empty
 end
 
 type 't dnf_t = 't derived_t s_constr s_constr
@@ -393,9 +398,23 @@ struct
          need to apply PIE *)
       synth_pie pos_elems neg_elems
 
+    let is_contradictory : DNF.iset -> bool = fun dep_conj ->
+      let pos_conj, neg_conj = DNF.InnerSet.partition (fun d -> d.sgn) dep_conj in
+      not (DepEv.is_empty (DepEv.inter
+                        (D.lower_to_set_unsafe pos_conj)
+                        (D.lower_to_set_unsafe neg_conj)))
+
     (* returns a synthesizer for an arbitrary conjunction by splitting
          it into dependent conjunctions *)
     let separate_conj : DNF.iset -> req_synth = fun conj ->
+      if !independent_mode then
+        if is_contradictory conj then synth_zero else
+          DNF.InnerSet.map_reduce
+            (fun d -> synth_dep_conj (DNF.InnerSet.singleton d))
+            synth_mult
+            synth_one
+            conj
+      else
       let hashed_ev = DNF.InnerSet.fold (fun d hashed_ev ->
           let hash = D.hash d in
           DHashMap.update hash (function

@@ -83,6 +83,7 @@ let func_blame fdecl label call blames : blame list =
   else
     List.map (func_blame_r fdecl label call blames) fdecl.results
 
+exception ArithmeticTypecheckingError of string
 
 (*
    This function attempts to typecheck (i.e. provide a blame for)
@@ -95,7 +96,7 @@ let rec typecheck_aexp prog ctxt aexp : blame list =
   let lookup x =
     match context_lookup x ctxt with
     | Some v -> [v]
-    | None -> [] in
+    | None -> raise (ArithmeticTypecheckingError (Format.sprintf "Undefined local variable %s" (local_to_string x))) in
   match aexp with
   | Var (x, l) ->
     (* if the variable can be looked up, add blame for the site `l`
@@ -126,7 +127,7 @@ let rec typecheck_aexp prog ctxt aexp : blame list =
        are the wrong number of them, fails with []
     *)
     match lookup_func_opt f prog with
-    | None -> []
+    | None -> raise (ArithmeticTypecheckingError (Format.sprintf "Undefined function %s" (func_to_string f)))
     | Some fdecl -> (
         let blame_list = List.map (typecheck_aexp prog ctxt) a_list in
         equiv_n_singleton_bind

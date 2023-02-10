@@ -1,14 +1,14 @@
 #meant to represent a pseudorandom generator
-def rand() -> (r) { r = 5 }
+def rand() -> (r) { return 5 }
 
-def sel(x, y) -> (ret) {
+def sel(x, y) -> ret {
     if rand() {
-        ret = x
+        return x
     } else {
         if rand() {
-            ret = y
+            return y
         } else {
-            ret = 0
+            return 0
         }
     }
 }
@@ -16,8 +16,9 @@ def sel(x, y) -> (ret) {
 def loop(x, y) -> (ret) {
     ret = sel(x, y);
     if rand() {
-        ret = sel(ret, loop(x, y))
-    } else { skip }
+        return sel(ret, loop(x, y))
+    };
+    return ret
 }
 
 

@@ -5,7 +5,7 @@ let program = Io.program
 let () = print_endline (Expr_repr.program_string program)
 let typechecked_prog = (Typecheck.typecheck_program program)
 let () = print_endline (Context_repr.typechecked_program_repr
-                         typechecked_prog.tfunc_tbl)
+                          typechecked_prog.tfunc_tbl)
 
 include Analyze.ProgramAnalyzer (struct
     type t = Typecheck.typechecked_program
@@ -20,17 +20,94 @@ let filter {dbf_src=_; dbf_tgt={bt_func=Func(f_s); bt_ret=_}} =
   | (_, "") -> true
   | (_, s) -> f_s = s
 
-(* compute the omegas *)
-let computed_omegas = Output.get_program_blame filter
 
-(* pretty print the functions with blames *)
-let () = Output.VeryPrettyPrint.format_program Format.std_formatter
-    !Io.IO.input_file typechecked_prog computed_omegas
+let analyze_and_output _ = 
+  (* compute the omegas *)
+  let start_t = Unix.gettimeofday () in
+  let computed_omegas = Output.get_program_blame filter in
+  let elapsed_t = Unix.gettimeofday () -. start_t in
 
-(* pretty print the raw omegas *)
-let () = Format.fprintf Format.std_formatter
-    "%a" Output.format_program_blame computed_omegas
+  (* pretty print the functions with blames *)
+  let () = Output.VeryPrettyPrint.format_program Format.std_formatter
+      !Io.IO.input_file typechecked_prog computed_omegas in
+
+  (* pretty print the raw omegas *)
+  let () = Format.fprintf Format.std_formatter
+      "%a" Output.format_program_blame computed_omegas in
+  computed_omegas, elapsed_t
+
+exception Unexpected of string
+
   
+let () = if !Io.IO.compare_mode then
+    let () = Refactor.independent_mode := true in
+    let POmegas indep_omegas, indep_t = analyze_and_output () in
+    let () = Refactor.independent_mode := false in
+    let POmegas dep_omegas, dep_t = analyze_and_output () in
+    let merged_omegas = OmegaMap.merge
+        (fun _ o1 o2 -> match o1, o2 with
+           | Some f1, Some f2 ->
+             Some (Float.abs (f1 -. f2))
+           | _ -> raise (Unexpected "Returned omega maps differed in domain"))
+        indep_omegas dep_omegas in
+    let geo_merged_omegas = OmegaMap.merge
+        (fun _ o1 o2 -> match o1, o2 with
+           | Some f1, Some f2 ->
+             if f1 +. f2 < 0.0001 then Some 0.0 else
+               Some ((Float.abs (f1 -. f2)) /. f2)
+           | _ -> raise (Unexpected "Returned omega maps differed in domain"))
+        indep_omegas dep_omegas in
+    let nonzero = OmegaMap.merge
+        (fun _ o1 o2 -> match o1, o2 with
+           | Some f1, Some f2 ->
+             if f1 +. f2 < 0.00001 then None else
+               Some (Float.abs (f1 -. f2))
+           | _ -> raise (Unexpected "Returned omega maps differed in domain"))
+        indep_omegas dep_omegas in
+    let geo_nonzero = OmegaMap.merge
+        (fun _ o1 o2 -> match o1, o2 with
+           | Some f1, Some f2 ->
+             if f1 +. f2 < 0.00001 then None else
+               Some ((Float.abs (f1 -. f2)) /. f2)
+           | _ -> raise (Unexpected "Returned omega maps differed in domain"))
+        indep_omegas dep_omegas in
+    let n = Float.of_int (OmegaMap.cardinal merged_omegas) in
+    let max_err = OmegaMap.fold
+        (fun _ f1 f2 -> if f1 > f2 then f1 else f2)
+        merged_omegas Float.neg_infinity in
+    let max_geo_err = OmegaMap.fold
+        (fun _ f1 f2 -> if f1 > f2 then f1 else f2)
+        geo_merged_omegas Float.neg_infinity in
+    let mean_err = (OmegaMap.fold
+                      (fun _ -> Float.add)
+                      merged_omegas 0.0) /. n in
+    let mean_geo_err = (OmegaMap.fold
+                      (fun _ -> Float.add)
+                      geo_merged_omegas 0.0) /. n in
+    let rms_err = Float.sqrt ((OmegaMap.fold
+                                 (fun _ f -> Float.add (f *. f))
+                                 merged_omegas 0.0) /. n) in
+    let n_nz = Float.of_int (OmegaMap.cardinal nonzero) in
+    let mean_err_nz = (OmegaMap.fold
+                      (fun _ -> Float.add)
+                      nonzero 0.0) /. n_nz in
+    let mean_geo_err_nz = (OmegaMap.fold
+                      (fun _ -> Float.add)
+                      geo_nonzero 0.0) /. n_nz in
+    let rms_err_nz = Float.sqrt ((OmegaMap.fold
+                                 (fun _ f -> Float.add (f *. f))
+                                 nonzero 0.0) /. n_nz) in
+
+    Format.printf "\n\nComparison results over %d omegas (%d nonzero):\nIndependent Events time: %f secs\nDependent Events time: %f secs\nMax Error: %f\nMax Relative Error: %f\nMean Error: %f\nMean Relative Error: %f\nRoot Mean Squared Error: %f\nMean Error (nonzero values): %f\nMean Relative Error (nonzero values): %f\nRoot Mean Squared Error (nonzero values): %f\n"
+      (int_of_float n)(int_of_float n_nz)
+      indep_t dep_t
+      max_err max_geo_err mean_err mean_geo_err rms_err
+      mean_err_nz mean_geo_err_nz rms_err_nz
+  else
+    let () = Refactor.independent_mode := !Io.IO.independent_mode in
+    let _ = analyze_and_output () in ()
+          
+
 
 (*
 let bld = Context.Refactor.EERefactorizer.build
