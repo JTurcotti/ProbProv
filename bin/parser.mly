@@ -18,7 +18,10 @@
 %token <int * int> BINOP
 %token <int * int> UNOP
 %token <int * int> DOT
-%token LPAREN RPAREN LBRACE RBRACE EQ IF ELSE SEMI SKIP DEF EOF TO ASSERT BY COMMA RETURN
+%token <int> DEF
+%token <int> LBRACE
+%token <int> RBRACE
+%token LPAREN RPAREN EQ IF ELSE SEMI SKIP EOF TO ASSERT BY COMMA RETURN
 
 %start main
 %type <raw_program> main
@@ -33,7 +36,7 @@ fdecl_list: {[]}
   | fdecl fdecl_list {$1 :: $2}
 
 fdecl: DEF IDENT ident_list TO ident_list LBRACE expr RBRACE {
-  {raw_name=fst $2; raw_params=$3; raw_results=$5; raw_body = $7}
+  {raw_name=fst $2; raw_params=$3; raw_results=$5; raw_body = $7; raw_pos=($1, $8)}
 }
 
 ident_list: LPAREN idents RPAREN {$2}

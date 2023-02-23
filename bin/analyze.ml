@@ -753,6 +753,7 @@ struct
     struct
       let format_program ff input_file color
           (tprog : Typecheck.typechecked_program)
+          (func : Expr.fdecl)
           (label_set : Expr.LabelSet.t)
           (arg : Expr.arg) (ret : Expr.ret) =
 
@@ -761,6 +762,11 @@ struct
           | None -> false
           | Some l -> Expr.LabelSet.mem l label_set in
 
+        let i_in_func i =
+          match func.pos with
+          | (start_pos, end_pos) ->
+            i >= start_pos && i <= end_pos in 
+                 
         let line_num, labelled_lines = ref 0, ref Expr.IntMap.empty in
         let char_num = ref 0 in
         let get_char _ = let i = !char_num in char_num := i + 1; i in
@@ -796,12 +802,13 @@ struct
           | _ -> false in
 
         let format_char i c =
-          if i_in_label_tbl i || i_is_arg_or_ret i then
-            format_color_char ff color c else (
-            if i_in_labelled_line i then
-              format_weak_color_char ff color 0.3 c
-            else
-              format_plain_char ff c)in
+          if i_in_func i then (
+            if i_in_label_tbl i || i_is_arg_or_ret i then
+              format_color_char ff color c else (
+              if i_in_labelled_line i then
+                format_weak_color_char ff color 0.3 c
+              else
+                format_plain_char ff c)) else ()in
 
         let () = char_num := 0 in
         let ic = open_in input_file in
@@ -810,7 +817,7 @@ struct
             let c = input_char ic in
             format_char (get_char ()) c
           done;
-        with End_of_file -> ()
+        with End_of_file -> (Format.fprintf ff "\n\n")
     end
 
     module VeryPrettyPrint =

@@ -27,6 +27,7 @@ type raw_fdecl = {
   raw_params: (string * int * int) list;
   raw_results: (string * int * int) list;
   raw_body: raw_expr;
+  raw_pos: (int * int);
 }
 
 type raw_program = Raw_Program of raw_fdecl list

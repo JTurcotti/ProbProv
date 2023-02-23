@@ -69,6 +69,7 @@ type fdecl = {
   results: ret list;
   num_results: int;
   body: expr; (* the meat *)
+  pos: (int * int);
 }
 
 module Func = struct
@@ -201,6 +202,7 @@ let label_prog raw_prog =
               (fun i (name, s_pos, e_pos) -> get_ret i name s_pos e_pos fname);
           num_results = List.length raw_fdecl.raw_results;
           body = label_expr raw_fdecl.raw_body;
+          pos = raw_fdecl.raw_pos;
         }
       in
       let func_tbl = List.fold_left (fun prog fdecl ->

@@ -11,8 +11,8 @@ rule token = parse
        }
      |	'(' {LPAREN}
      |	')' {RPAREN}
-     |	'{' {LBRACE}
-     |	'}' {RBRACE}
+     |	'{' {LBRACE(Lexing.lexeme_start lexbuf)}
+     |	'}' {RBRACE(Lexing.lexeme_start lexbuf)}
      |	',' {COMMA}
      |  ['+''-''*''/''>''<'] | "<=" | ">="
      | "==" | "!=" | "||" | "&&" | "%" {
@@ -30,7 +30,7 @@ rule token = parse
      |	"else"	{ELSE}
      |  ';' {SEMI}
      |	"skip" {SKIP}
-     |	"def"  {DEF}
+     |	"def"  {DEF(Lexing.lexeme_start lexbuf)}
      | 	"assert" {ASSERT}
      |	"return" {RETURN}
      |	"by" {BY}
