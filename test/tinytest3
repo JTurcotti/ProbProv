@@ -1,30 +1,44 @@
-def f(x) -> y {
-    if 0 {
-        t = 0;
-        if x {
-            t = 1
-        };
-        if t {
+def f(x, y) -> t {
+    if x {
+        if y {
             return 0
-        };
-	return 1
-    } else {
-      return 2
-    }
+        }
+    };
+    return 1
 }
 
-def f_classic(x) -> y {
-    if 0 {
-        t = 0;
-        if x {
+def f_classic(x, y) -> t {
+    t = 0;
+    if x {
+        if y {
             t = 1
-        };
-        y = 0;
-        if t {
-            y = 1
         }
-    } else {
-        y = 2
     };
-    return y
+    return t
 }
+
+def f3(x, y, z) -> t {
+    if x {
+        if y {
+            if z {
+                return 0
+            }
+        }
+    };
+    return 1
+}
+
+def f3_classic(x, y, z) -> t {
+    t = 0;
+    if x {
+        if y {
+            if z {
+                t = 1
+            }
+        }
+    };
+    return t
+}
+
+
+

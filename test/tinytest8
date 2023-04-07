@@ -1,0 +1,9 @@
+def f(a) -> d {
+    t = 0;
+    if a {
+       	return 0
+    };
+    t = 1;
+    return t
+        
+}

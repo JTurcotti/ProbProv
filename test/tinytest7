@@ -15,7 +15,7 @@ def f(a, b, x, y) -> t {
         if x {
             return 3
         }
-    };
+    };custom
     return 0
 }
 
