@@ -1,0 +1,106 @@
+\documentclass{article}
+\usepackage{xspace, mathpartir}
+\usepackage[left=3cm,right=3cm]{geometry}
+\usepackage{jt-shorthand}
+
+\renewcommand{\P}{\ensuremath{\mathcal{P}}\xspace}
+\newcommand{\M}{\ensuremath{\mathcal{M}}\xspace}
+\newcommand{\V}{\ensuremath{\mathcal{V}}\xspace}
+\newcommand{\Vbar}{\ensuremath{\overline{\mathcal{V}}}\xspace}
+\renewcommand{\T}{\ensuremath{\mathcal{T}}\xspace}
+\renewcommand{\eval}[3]{\ensuremath{(#1, #2) \downarrow #3}}
+\newcommand{\evalT}[4]{\ensuremath{(#1, #2) \downarrow (#3 : #4)}}
+\renewcommand{\sin}{_{\text{in}}}
+\newcommand{\sout}{_{\text{out}}}
+\newcommand{\eqin}{\ensuremath{=\sin}\xspace}
+\newcommand{\eqout}{\ensuremath{=\sout}\xspace}
+\newcommand{\Min}{\ensuremath{M\sin}\xspace}
+\newcommand{\Mout}{\ensuremath{M\sout}\xspace}
+\newcommand{\Xin}{\ensuremath{X\sin}\xspace}
+\newcommand{\Xout}{\ensuremath{X\sout}\xspace}
+\newcommand{\pto}{\rightharpoonup}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+
+
+\begin{document}
+
+\section*{A High-Level Overview of Noninterference Traces}
+
+Consider programs drawn from a domain \P, and states of memory drawn from states \M. A relation \eval{P}{\Min}{\Mout} indicates programs $P$ that may be evaluated in state \Min to yield state \Mout. Classical information flows analysis consists of choosing equivalence relations \eqin and \eqout on \M representing distinguishability of memory states by an attacker at two different points, and calling the program _noninterferent_ if its execution preserves indistinguishability of states between those two points. Formally: 
+
+\begin{definition}[Noninterference]
+  Program $P \in \P$ is _noninterferent_ with respect to input equivalence relation \eqin and output equivalence relation \eqout if $\Min \eqin \Min'$, $\eval{P}{\Min}{\Mout}$, and $\eval{P}{\Min'}{\Mout'}$ imply $\Mout \eqout \Mout'$.
+\end{definition}
+
+Enforcing true noninterference proves overly restrictive in practice. One way to relax this stricture is to take advantage of properties of program execution besdies input and output, such as observable side effects and profiling information. Formally, we model this information as data drawn from a set \T of possible _traces_, enriching our evaluation relation to \evalT{P}{\Min}{\Mout}{T} to indicate trace $T$ arose during execution. \T could be a singleton set if no trace information is observable, or \T could represent all possible sequences of execution steps possible. (For our purposes, we will choose a happy medium: \T will indicate whether each branch encountered by execution was taken.) Noninterference can now be considered to be not just a property of programs as a whole, but a property of specific traces $T$ of a program. In particular, $T$ is a _noninterference trace_ if indistinguishability is preserved given that trace $T$ arises during execution. Formally:
+
+\begin{definition}[Noninterference Trace]
+  $T \in \T$ is a _noninterference trace_ of program $P$ if, for all $\Min, \Mout \in \M$, $\Min \eqin \Min'$, $\evalT{P}{\Min}{\Mout}{T}$, and $\eval{P}{\Min'}{\Mout'}$\footnote{note: $T$ need not be the trace that arises from execution of $\Min'$} imply $\Mout \eqout \Mout'$.
+\end{definition}
+
+In practice this concept could be used for many purposes, such as attenuating noninterference by allowing violations when certain runtime effects occur, better understanding programs by identifying the conditions under which interference arises, or estimating the volume of program executions that exhibit interference. (For our purposes, the last is most relevant - we will use it to compute _probabilities_ of interference.)
+
+Hyperproperties like noninterference and trace noninterference are not directly effeciently computable, so usually an alternative analysis is proposed (e.g. a type system) and proven sound with respect to the hyperproperty. Our use cases above (in particular the last) are interesting because they require an argument for not just soundness but also completeness. We have written a type system for computing noninterference traces, and will provide here a toy language with an _injective semantics_ under which that computation can be proven both sound and complete.
+
+\subsection*{A Toy Language with Injective Semantics}
+
+
+\begin{figure}[h]
+  \begin{align*}
+    \text{(expression)}~e &::= x = x \otimes x ~|~ "if"_b~x~"then"~e~"else"~e \\
+    \text{(trace)}~\T &:= \N \pto 2\\
+    \text{(closed values)}~\Vbar &::= v ~|~ \overline{v} \otimes \overline{v} ~~\text{(where }v \in \V, \overline{v} \in \Vbar) \\
+    \text{(stack)}~\s &:= X \pto \Vbar \\
+    \text{(heap)}~\r &:= \V \to 2^B\\
+    \text{(memory state)}~\M &:= \s \times \r
+  \end{align*}
+  \caption{Terms, traces, and states in our toy language}
+  \label{fig:toy}
+\end{figure}
+
+
+Figure \ref{fig:toy} outlines our toy language. Fix a set $X$ of variables $x$, with $x\sin$ and $x\sout$ chosen as input and output (possible $x\sin = x\sout$). Fix a set of uninterpreted binary operators $\otimes$, each of which will be constrained to occur at most once in the program. Fix a number of branches $b \in \N$. Program terms are expressions $e$ where $e$ is a sequence of other expressions $e; e$, an assignment $x = x \otimes x$, or a branch: $"if"_b~x~"then"~e~"else"~e$. Well-formedness for programs enforces that each branch label $b$ is used exactly once and no operators $\otimes$ are repeated.
+
+To apply our above notions of noninterference to this language we let our set of traces be $\T = \N \pto 2$ (i.e. associations of branch numbers with booleans indicating how the branch was taken). Our memory states $\M$ are broken down into two components: a ``stack'' $\s$ and a ``heap'' $\r$. $\r$ maps a small set of values \V to bitstrings $2^B$, where $B$ is the maximal branch label $b$. $\s$ maps variables $x$ to terms in the set \Vbar, which is the closure of \V over the operators $\otimes$. Using two maps to form an extra layer of indirection may appear artifical but will be necessary to ensure the extent to which inputs to the program may vary is properly captured.\footnote{in other words, the reader shouldn't expect intuition for why it's necessary _yet_}
+
+To fully instantiate our definition of noninterference, it is now necessary to define only our equivalence relations \eqin and \eqout on \M, and to define the evaluation relation $\evalT{P}{\Min}{\Mout}{T}$. For $x \in X$ and $M = (\s, \r)$, let $M(x)$ be defined as $\overline{\r}(\s(x))$.\footnote{where $\overline{\r}(v) = \r(v)$ if $v \in \V$ and $\overline{\r}(v \otimes v') = \overline{\r}(v) \otimes \overline{\r}(v')$ otherwise, as could be expected. Also, $M(x)$ could be undefined if lookups in $\s$ fail.}. Now we are equipped to define $M \eqin M'$ as $M(\text{dom}(M) \setminus x\sin) = M'(\text{dom}(M') \setminus x\sin)$ (i.e. $M$ and $M'$ agree everywhere but $x\sin$) and $M \eqout M'$ as $M(x\sout) = M'(x\sout)$ (i.e. $M$ and $M'$ agree on $x\sout$).\footnote{These choices of \eqin and \eqout amount to challenging an attacker that initially has no knowledge of $x\sin$ to learn something about it by executing $P$ and observing its output $x\sout$}
+
+
+\begin{figure}[h]
+  \begin{mathpar}
+    \inferrule[assign]{\s(x_1) = v_1 \\ \s(x_2) = v_2}
+    {\evalT{x_0 = x_1 \otimes x_2}{(\s, \r)}{(\s[x_0 \mapsto v_1 \otimes x_2], \r)}{\e}}
+
+    \inferrule[branch-$i$]{\bigoplus_{y \in "vars"(\s(x))}\r(y)_b = i \\ \evalT{e_i}{(\s, \r)}{(\s', \r')}{T}}
+    {\evalT{"if"_b~x~"then"~e_0~"else"~e_1}{(\s, \r)}{(\s', \r')}{T[b \mapsto i}}
+  \end{mathpar}
+  \caption{Rules for the evaluation semantics of our toy language.}
+  \label{fig:rules}
+\end{figure}
+
+
+Figure \ref{fig:rules}\footnote{$\oplus$ is logical xor and "vars" flattens values in \Vbar to the set of values in \V they contain} formally states the rules for the evaluation relation $\evalT{P}{\Min}{\Mout}{T}$. The rule for \textsc{assign} is as expected, but the rule for \textsc{branch-}$i$ (where $i$ is $0$ or $1$) is interesting. This rules hopefully elucidates the need for separate $\s$ and $\r$. Indeed, instead of directly examining the term that $\s$ associates with $x$, we strip away the term structure to examine only the underlying set of values constituting the term. We then decide that the ``value'' of $x$ that will determine in which direction the branch is taken is the logical xor of the $b$th component of each such value as looked up in $\r$. This ensures that varying the binding on $\r$ of any one of the values in $"vars"(\s(x))$ is sufficient to alternate the direction the branch takes. The rest of the rule is as expected, noting that the direction of the branch is logged in the trace via update to $T$.
+
+\subsection*{Uses of the Toy Language}
+
+Though it will not be described in detail here, we have written a type system that computes, for any program $P$, input $x\sin$, and output $x\sout$, a predicate $\phi$ on traces indicating the condition for the trace to be a noninterference trace. The semantics of the toy language above were defined exactly so that provably, the type system correctly classifies interference traces as interference traces and noninterference traces as noninterference traces. Our goal is to prove this theorem in Coq.
+
+This is an exciting result because the typechecking algorithm is efficient for large programs. In particular, we use the results of typechecking to determine probabilities of influence (i.e. interference) between any two values in the program over the randomness in the space of different executions that could have occurred between them.
+
+
+\subsection*{Relation of the Toy Language to More Familar Languages}
+
+Though this toy language may appear strange, it is in fact very close to the semantics of more familar languages. In fact, only two changes must be made for it to exactly match the semantics of an IMP-like language of your choice. First, the relations \eqin and \eqout must be expanded to include an equational theory of any operators $\otimes$ used in the program. For example, separate syntactic uses of the same operator should be equated, and properties like commutativity, associativity, and inverses should be added. Second, the allowance of any bitstrings in the codomain of $\r$ must be narrowed to only those that yield _satisfiable conjunctions of branch guards_. 
+
+\subsection*{Important Extensions Not Discussed Here}
+
+\subsubsection*{Interprocedural flow}
+
+\subsubsection*{Mutability}
+
+
+
+
+\end{document}
